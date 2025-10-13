@@ -1,5 +1,6 @@
 Ожидаемая структура работы:
 
+```text
 CryptoLab_DES/
 │
 ├── CryptoLib/                   # библиотека с реализацией DES/DEAL
@@ -40,3 +41,4 @@ CryptoLab_DES/
 ├── README.md
 │
 └── ...
+````
