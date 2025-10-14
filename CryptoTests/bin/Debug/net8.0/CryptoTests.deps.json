@@ -8,6 +8,7 @@
     ".NETCoreApp,Version=v8.0": {
       "CryptoTests/1.0.0": {
         "dependencies": {
+          "CryptoLib": "1.0.0",
           "Microsoft.NET.Test.Sdk": "17.6.0",
           "coverlet.collector": "6.0.0",
           "xunit": "2.4.2",
@@ -1019,7 +1020,12 @@
           }
         }
       },
-      "xunit.runner.visualstudio/2.4.5": {}
+      "xunit.runner.visualstudio/2.4.5": {},
+      "CryptoLib/1.0.0": {
+        "runtime": {
+          "CryptoLib.dll": {}
+        }
+      }
     }
   },
   "libraries": {
@@ -1650,6 +1656,11 @@
       "sha512": "sha512-OwHamvBdUKgqsXfBzWiCW/O98BTx81UKzx2bieIOQI7CZFE5NEQZGi8PBQGIKawDW96xeRffiNf20SjfC0x9hw==",
       "path": "xunit.runner.visualstudio/2.4.5",
       "hashPath": "xunit.runner.visualstudio.2.4.5.nupkg.sha512"
+    },
+    "CryptoLib/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
     }
   }
 }

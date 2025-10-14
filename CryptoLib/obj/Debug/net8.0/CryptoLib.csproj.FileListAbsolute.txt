@@ -1,0 +1,12 @@
+/home/ares/CryptoLab_DES/CryptoLib/bin/Debug/net8.0/CryptoLib.deps.json
+/home/ares/CryptoLab_DES/CryptoLib/bin/Debug/net8.0/CryptoLib.dll
+/home/ares/CryptoLab_DES/CryptoLib/bin/Debug/net8.0/CryptoLib.pdb
+/home/ares/CryptoLab_DES/CryptoLib/obj/Debug/net8.0/CryptoLib.GeneratedMSBuildEditorConfig.editorconfig
+/home/ares/CryptoLab_DES/CryptoLib/obj/Debug/net8.0/CryptoLib.AssemblyInfoInputs.cache
+/home/ares/CryptoLab_DES/CryptoLib/obj/Debug/net8.0/CryptoLib.AssemblyInfo.cs
+/home/ares/CryptoLab_DES/CryptoLib/obj/Debug/net8.0/CryptoLib.csproj.CoreCompileInputs.cache
+/home/ares/CryptoLab_DES/CryptoLib/obj/Debug/net8.0/CryptoLib.sourcelink.json
+/home/ares/CryptoLab_DES/CryptoLib/obj/Debug/net8.0/CryptoLib.dll
+/home/ares/CryptoLab_DES/CryptoLib/obj/Debug/net8.0/refint/CryptoLib.dll
+/home/ares/CryptoLab_DES/CryptoLib/obj/Debug/net8.0/CryptoLib.pdb
+/home/ares/CryptoLab_DES/CryptoLib/obj/Debug/net8.0/ref/CryptoLib.dll

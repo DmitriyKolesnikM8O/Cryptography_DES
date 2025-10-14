@@ -96,3 +96,7 @@
 /home/ares/CryptoLab_DES/CryptoTests/obj/Debug/net8.0/CryptoTests.pdb
 /home/ares/CryptoLab_DES/CryptoTests/obj/Debug/net8.0/CryptoTests.genruntimeconfig.cache
 /home/ares/CryptoLab_DES/CryptoTests/obj/Debug/net8.0/ref/CryptoTests.dll
+/home/ares/CryptoLab_DES/CryptoTests/bin/Debug/net8.0/CoverletSourceRootsMapping_CryptoTests
+/home/ares/CryptoLab_DES/CryptoTests/bin/Debug/net8.0/CryptoLib.dll
+/home/ares/CryptoLab_DES/CryptoTests/bin/Debug/net8.0/CryptoLib.pdb
+/home/ares/CryptoLab_DES/CryptoTests/obj/Debug/net8.0/CryptoTests.sourcelink.json
