@@ -40,34 +40,45 @@ namespace CryptoLib.Modes
             // Сначала проверяем явное указание алгоритма в дополнительных параметрах
             if (additionalParameters != null)
             {
-                foreach (var param in additionalParameters)
+                var algorithmParam = additionalParameters.FirstOrDefault(p => p.Key == "Algorithm");
+                if (!algorithmParam.Equals(default(KeyValuePair<string, object>)))
                 {
-                    if (param.Key == "Algorithm")
+                    var algorithmValue = algorithmParam.Value.ToString();
+                    
+                    if (algorithmValue.Contains("DEAL"))
                     {
-                        var algorithmName = param.Value.ToString();
-                        return algorithmName switch
+                        // Для DEAL определяем тип по размеру ключа
+                        return key.Length switch
                         {
-                            "DEAL" => new DEALAlgorithm(),
-                            "DES" => new DESAlgorithm(),
-                            _ => throw new ArgumentException($"Unsupported algorithm: {algorithmName}")
+                            16 => new DEALAlgorithm(DEALKeyScheduler.KeyType.KEY_SIZE_128),
+                            24 => new DEALAlgorithm(DEALKeyScheduler.KeyType.KEY_SIZE_192),
+                            32 => new DEALAlgorithm(DEALKeyScheduler.KeyType.KEY_SIZE_256),
+                            _ => throw new ArgumentException($"Unsupported DEAL key size: {key.Length} bytes")
                         };
                     }
+                    else if (algorithmValue.Contains("DES"))
+                    {
+                        return new DESAlgorithm();
+                    }
+                    
+                    return algorithmValue switch
+                    {
+                        "DEAL" => new DEALAlgorithm(), // по умолчанию 128-bit
+                        "DES" => new DESAlgorithm(),
+                        _ => throw new ArgumentException($"Unsupported algorithm: {algorithmValue}")
+                    };
                 }
             }
 
             // Автоопределение по размеру ключа
-            switch (key.Length)
+            return key.Length switch
             {
-                case 8:
-                    return new DESAlgorithm();      // DES ключ - 8 байт
-                case 16:
-                case 24:
-                case 32:
-                    return new DEALAlgorithm();     // DEAL ключи - 16, 24, 32 байта
-                default:
-                    throw new ArgumentException($"Unsupported key size: {key.Length} bytes. " +
-                                            "DES requires 8 bytes, DEAL requires 16, 24, or 32 bytes");
-            }
+                8 => new DESAlgorithm(),
+                16 => new DEALAlgorithm(DEALKeyScheduler.KeyType.KEY_SIZE_128),
+                24 => new DEALAlgorithm(DEALKeyScheduler.KeyType.KEY_SIZE_192),
+                32 => new DEALAlgorithm(DEALKeyScheduler.KeyType.KEY_SIZE_256),
+                _ => throw new ArgumentException($"Unsupported key size: {key.Length} bytes")
+            };
         }
 
         private void ValidateParameters()
