@@ -5,14 +5,14 @@ CryptoLab_DES/
 │
 ├── CryptoLib/                   # библиотека с реализацией DES/DEAL
 │   ├── Core/
-│   │   ├── BitPermutation.cs
-│   │   ├── BitUtils.cs
+│   │   └── BitPermutation.cs
 │   ├── Interfaces/
 │   │   ├── IKeyScheduler.cs
 │   │   ├── IFeistelFunction.cs
 │   │   ├── ISymmetricCipher.cs
 │   ├── Algorithms/
 │   │   ├── FeistelNetwork.cs
+│   │   ├── FeistelNetworkDeal.cs
 │   │   ├── DES/
 │   │   │   ├── DESTables.cs
 │   │   │   ├── DESKeyScheduler.cs
@@ -36,6 +36,7 @@ CryptoLab_DES/
 ├── CryptoTests/                  # модульные тесты
 │   ├── BitPermutationTests.cs
 │   ├── DESTests.cs
+│   ├── DEALTests.cs
 │   └── CryptoTests.csproj
 │
 ├── CryptoLab_DES.sln
