@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CryptoLib.Interfaces;
 using CryptoLib.Algorithms.DES;
+using CryptoLib.Algorithms.DEAL;
 
 namespace CryptoLib.Modes
 {
@@ -27,17 +28,46 @@ namespace CryptoLib.Modes
             _padding = padding;
             _initializationVector = initializationVector;
 
-            _algorithm = CreateAlgorithm(additionalParameters);
+            _algorithm = CreateAlgorithm(key, additionalParameters);
             _algorithm.SetRoundKeys(key);
             _blockSize = _algorithm.BlockSize;
 
             ValidateParameters();
         }
 
-        private ISymmetricCipher CreateAlgorithm(KeyValuePair<string, object>[] additionalParameters)
+        private ISymmetricCipher CreateAlgorithm(byte[] key, KeyValuePair<string, object>[] additionalParameters)
         {
-            
-            return new DESAlgorithm();
+            // Сначала проверяем явное указание алгоритма в дополнительных параметрах
+            if (additionalParameters != null)
+            {
+                foreach (var param in additionalParameters)
+                {
+                    if (param.Key == "Algorithm")
+                    {
+                        var algorithmName = param.Value.ToString();
+                        return algorithmName switch
+                        {
+                            "DEAL" => new DEALAlgorithm(),
+                            "DES" => new DESAlgorithm(),
+                            _ => throw new ArgumentException($"Unsupported algorithm: {algorithmName}")
+                        };
+                    }
+                }
+            }
+
+            // Автоопределение по размеру ключа
+            switch (key.Length)
+            {
+                case 8:
+                    return new DESAlgorithm();      // DES ключ - 8 байт
+                case 16:
+                case 24:
+                case 32:
+                    return new DEALAlgorithm();     // DEAL ключи - 16, 24, 32 байта
+                default:
+                    throw new ArgumentException($"Unsupported key size: {key.Length} bytes. " +
+                                            "DES requires 8 bytes, DEAL requires 16, 24, or 32 bytes");
+            }
         }
 
         private void ValidateParameters()

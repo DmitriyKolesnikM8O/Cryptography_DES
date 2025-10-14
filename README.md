@@ -17,14 +17,16 @@ CryptoLab_DES/
 │   │   │   ├── DESTables.cs
 │   │   │   ├── DESKeyScheduler.cs
 │   │   │   ├── DESFeistelFunction.cs
-│   │   │   ├── DESAlgorithm.cs
-│   │   ├── DEAL/
+│   │   │   └── DESAlgorithm.cs
+│   │   └── DEAL/
 │   │       ├── DEALAlgorithm.cs
+│   │       ├── DEALKeyScheduler.cs
 │   │       ├── DESAdapter.cs
+│   │       └── DEALFeistelFunction.cs
 │   ├── Modes/
 │   │   ├── CipherContext.cs
 │   │   ├── CipherMode.cs
-│   │   ├── PaddingMode.cs
+│   │   └── PaddingMode.cs
 │   └── CryptoLib.csproj
 │
 ├── CryptoDemo/                   # консольное демо для лабораторной
@@ -48,3 +50,8 @@ TO-DO:
 - точно ли только ECB можно распараллелить?
 - для файлов мб параллельные потоки лучше
 - в паддинги мб тоже параллелизм запихать
+- больше тестов для DES
+- не дофига ли файлов для DEAL
+- мб изменения в структуре, не сложно ли?
+- в тесты надо добавить файлы, музыку, кота, окрошку, небоскреб, сентябрь и так далее
+- почему я zeroIndex в BitPermutations всегда false кидаю, в чем смысл параметра
