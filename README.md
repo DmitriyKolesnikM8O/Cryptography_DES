@@ -14,7 +14,7 @@ CryptoLab_DES/
 │   ├── Algorithms/
 │   │   ├── FeistelNetwork.cs
 │   │   ├── DES/
-│   │   │   ├── Tables.cs
+│   │   │   ├── DESTables.cs
 │   │   │   ├── DESKeyScheduler.cs
 │   │   │   ├── DESFeistelFunction.cs
 │   │   │   ├── DESAlgorithm.cs
@@ -42,3 +42,9 @@ CryptoLab_DES/
 │
 └── ...
 ````
+
+
+TO-DO:
+- точно ли только ECB можно распараллелить?
+- для файлов мб параллельные потоки лучше
+- в паддинги мб тоже параллелизм запихать
