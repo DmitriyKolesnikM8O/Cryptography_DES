@@ -13,6 +13,9 @@ using System.Linq;
 6.Один бит
 7.Пустой P-блок 
 8.Полная перестановка
+9. Перестановка через границу байтов
+10. Граничные значения индексов
+11. Симметричная перестановка
 */
 
 
@@ -20,8 +23,8 @@ namespace CryptoTests
 {
     public class BitPermutationTests
     {
-        private readonly byte[] Input64Bits = new byte[] { 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10 };
-        private readonly int[] SmallPBlock = new int[] { 0, 7, 8, 15, 63 };
+        private readonly byte[] Input64Bits = [0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10];
+        private readonly int[] SmallPBlock = [0, 7, 8, 15, 63];
 
         /// <summary>
         /// Тестирует базовый случай LSB режима с нумерацией с 0
@@ -176,6 +179,73 @@ namespace CryptoTests
 
             Assert.NotNull(actual);
             Assert.Equal(8, actual.Length); // 64 бита = 8 байт
+        }
+
+        /// <summary>
+        /// Дополнительный тест: Проверка перестановки, затрагивающей границу байтов (биты 6, 7, 8, 9).
+        /// </summary>
+        [Fact]
+        public void PermuteBits_CrossByteBoundary_ShouldReturnCorrectResult()
+        {
+            int[] crossBlock = [6, 7, 8, 9]; // 4 бита
+
+            // 1. LSB-режим (Output: LSB-first)
+            // Input (0xFE, 0xDC): LSB bits 6, 7 (Byte 0) = 1, 1; LSB bits 0, 1 (Byte 1) = 0, 0.
+            // Stream: 1, 1, 0, 0. Result byte (LSB-first): 1*2^0 + 1*2^1 = 3 (0x03)
+            byte[] actualLsb = BitPermutation.PermutationBytes(Input64Bits, crossBlock, true, true);
+            Assert.Equal(new byte[] { 0x03 }, actualLsb);
+
+            // 2. MSB-режим (Output: MSB-first)
+            // Input (0xFE, 0xDC): MSB bits 6, 7 (Byte 0) = 1, 0; MSB bits 0, 1 (Byte 1) = 1, 1.
+            // Stream: 1, 0, 1, 1. Result byte (MSB-first): 1*2^7 + 0*2^6 + 1*2^5 + 1*2^4 = 176 (0xB0)
+            byte[] actualMsb = BitPermutation.PermutationBytes(Input64Bits, crossBlock, false, true);
+            Assert.Equal(new byte[] { 0xB0 }, actualMsb);
+        }
+
+        /// <summary>
+        /// Дополнительный тест: Проверка максимального валидного индекса (63) и невалидного (64).
+        /// </summary>
+        [Fact]
+        public void PermuteBits_MaxIndexBoundary_ShouldReturnCorrectResult()
+        {
+            // Индексация с 0. Максимальный индекс: 63.
+            int[] pBlockMax = [63]; // Бит 63 = MSB data[7] (LSB mode) или LSB data[7] (MSB mode)
+
+            // Вход: 0x10. MSB (бит 63) = 0. LSB (бит 56) = 0.
+
+            // LSB Mode (бит 63 = MSB data[7] = 0) -> [0x00]
+            byte[] actualLsb = BitPermutation.PermutationBytes(Input64Bits, pBlockMax, true, true);
+            Assert.Equal(new byte[] { 0x00 }, actualLsb);
+
+            // MSB Mode (бит 63 = LSB data[7] = 0) -> [0x00]
+            byte[] actualMsb = BitPermutation.PermutationBytes(Input64Bits, pBlockMax, false, true);
+            Assert.Equal(new byte[] { 0x00 }, actualMsb);
+
+            // Проверка, что тест InvalidPBlock_ThrowsException работает корректно и с MSB/Index 1
+            // Max index for IndexFromOne=false is 64. Index 65 must fail.
+            int[] invalidPBlock = [65];
+            Assert.Throws<ArgumentException>(() =>
+            {
+                BitPermutation.PermutationBytes(Input64Bits, invalidPBlock, false, false);
+            });
+        }
+        
+        /// <summary>
+        /// Дополнительный тест: симметричная перестановка, тесты на то, что 
+        /// обратная перестановка возвращает исходные данные.
+        /// </summary>
+        [Fact]
+        public void PermuteBits_SymmetricPermutation_ShouldReturnOriginal()
+        {
+            // P-блок, который просто копирует биты в том же порядке
+            int[] identityPBlock = Enumerable.Range(0, 64).ToArray();
+            
+            byte[] original = new byte[] { 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0 };
+            
+            byte[] permuted = BitPermutation.PermutationBytes(original, identityPBlock, true, true);
+            
+            // В LSB режиме с нумерацией 0 идентичная перестановка должна дать тот же результат
+            Assert.Equal(original, permuted);
         }
     }
 }
