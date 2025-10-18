@@ -7,23 +7,16 @@ namespace CryptoLib.Algorithms.DEAL
     /// Специализированная сеть Фейстеля для алгоритма DEAL
     /// DEAL работает с блоками 128 бит (16 байт) и использует DES как раундовую функцию
     /// </summary>
-    public class FeistelNetworkDEAL : ISymmetricCipher
+    public class FeistelNetworkDEAL(
+        IKeyScheduler keyScheduler,
+        IFeistelFunction feistelFunction,
+        int rounds) : ISymmetricCipher
     {
-        private readonly IKeyScheduler _keyScheduler;
-        private readonly IFeistelFunction _feistelFunction;
-        private readonly int _rounds;
-        private byte[][] _roundKeys;
+        private readonly IKeyScheduler _keyScheduler = keyScheduler ?? throw new ArgumentNullException(nameof(keyScheduler));
+        private readonly IFeistelFunction _feistelFunction = feistelFunction ?? throw new ArgumentNullException(nameof(feistelFunction));
+        private readonly int _rounds = rounds > 0 ? rounds : throw new ArgumentException("Количество раундов должно быть положительным", nameof(rounds));
+        private byte[][]? _roundKeys;
         private bool _keysSet = false;
-
-        public FeistelNetworkDEAL(
-            IKeyScheduler keyScheduler,
-            IFeistelFunction feistelFunction,
-            int rounds)
-        {
-            _keyScheduler = keyScheduler ?? throw new ArgumentNullException(nameof(keyScheduler));
-            _feistelFunction = feistelFunction ?? throw new ArgumentNullException(nameof(feistelFunction));
-            _rounds = rounds > 0 ? rounds : throw new ArgumentException("Количество раундов должно быть положительным", nameof(rounds));
-        }
 
         public int BlockSize => 16; // DEAL работает с блоками 128 бит (16 байт)
 

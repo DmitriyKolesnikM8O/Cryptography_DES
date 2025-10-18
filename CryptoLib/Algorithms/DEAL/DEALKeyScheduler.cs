@@ -95,7 +95,7 @@ namespace CryptoLib.Algorithms.DEAL
                 if (i < 6)
                 {
                     // Ключи берутся из исходного ключа
-                    int offset = (i * 4) % 24;
+                    int offset = i * 4 % 24;
                     Array.Copy(key, offset, roundKeys[i], 0, 4);
                     Array.Copy(key, (offset + 8) % 24, roundKeys[i], 4, 4);
                 }
@@ -117,7 +117,7 @@ namespace CryptoLib.Algorithms.DEAL
                 roundKeys[i] = new byte[8];
                 
                 // Ключи берутся непосредственно из 256-битного ключа
-                int offset = (i * 8) % 32;
+                int offset = i * 8 % 32;
                 Array.Copy(key, offset, roundKeys[i], 0, 8);
             }
         }
