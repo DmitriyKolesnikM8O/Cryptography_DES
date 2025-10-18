@@ -256,30 +256,50 @@ namespace CryptoLib.Modes
         }
 
         private byte[] DecryptCBC(byte[] data)
+{
+    int blockSize = _blockSize;
+    int blockCount = data.Length / blockSize;
+    byte[] result = new byte[data.Length];
+    
+    // Получаем все зашифрованные блоки
+    byte[][] encryptedBlocks = new byte[blockCount][];
+    for (int i = 0; i < blockCount; i++)
+    {
+        encryptedBlocks[i] = new byte[blockSize];
+        Array.Copy(data, i * blockSize, encryptedBlocks[i], 0, blockSize);
+    }
+    
+    
+    byte[][] decryptedBlocks = new byte[blockCount][];
+    var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+    var decryptLock = new object(); 
+    
+    Parallel.For(0, blockCount, options, i =>
+    {
+        // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId} обрабатывает блок {i}");
+        byte[] block;
+        lock (decryptLock)
         {
-            int blockSize = _blockSize;
-            byte[] result = new byte[data.Length];
-            byte[] previousBlock = (byte[])_initializationVector.Clone();
-            
-            for (int i = 0; i < data.Length / blockSize; i++)
-            {
-                int offset = i * blockSize;
-                byte[] encryptedBlock = new byte[blockSize];
-                Array.Copy(data, offset, encryptedBlock, 0, blockSize);
-                
-                byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
-                
-                for (int j = 0; j < blockSize; j++)
-                {
-                    decryptedBlock[j] ^= previousBlock[j];
-                }
-                
-                Array.Copy(decryptedBlock, 0, result, offset, blockSize);
-                previousBlock = encryptedBlock;
-            }
-            
-            return result;
+            block = (byte[])_algorithm.DecryptBlock(encryptedBlocks[i]).Clone();
         }
+        decryptedBlocks[i] = block;
+    });
+    
+    // Последовательно применяем XOR
+    byte[] previousCipherBlock = (byte[])_initializationVector.Clone();
+    for (int i = 0; i < blockCount; i++)
+    {
+        for (int j = 0; j < blockSize; j++)
+        {
+            result[i * blockSize + j] = (byte)(decryptedBlocks[i][j] ^ previousCipherBlock[j]);
+        }
+        previousCipherBlock = encryptedBlocks[i];
+    }
+    
+    return result;
+}
+
+
 
         private byte[] EncryptPCBC(byte[] data)
         {
@@ -391,23 +411,44 @@ namespace CryptoLib.Modes
         private byte[] EncryptOFB(byte[] data)
         {
             int blockSize = _blockSize;
+            int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
-            byte[] feedback = (byte[])_initializationVector.Clone();
-
-            for (int i = 0; i < data.Length / blockSize; i++)
+            
+            byte[] iv = (byte[])_initializationVector.Clone();
+            byte[][] keystreamBlocks = new byte[blockCount][];
+            
+            var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+            var lockObj = new object();
+            
+            
+            Parallel.For(0, blockCount, options, i =>
+            {
+                // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId}: блок {i}, {i+1} Encrypt");
+                byte[] tempIv = (byte[])iv.Clone();
+            
+                for (int j = 0; j < i; j++)
+                {
+                    lock (lockObj)
+                    {
+                        tempIv = _algorithm.EncryptBlock(tempIv);
+                    }
+                }
+                lock (lockObj)
+                {
+                    keystreamBlocks[i] = _algorithm.EncryptBlock(tempIv);
+                }
+            });
+            
+            
+            Parallel.For(0, blockCount, options, i =>
             {
                 int offset = i * blockSize;
-                byte[] block = new byte[blockSize];
-                Array.Copy(data, offset, block, 0, blockSize);
-
-                feedback = _algorithm.EncryptBlock(feedback);
-
                 for (int j = 0; j < blockSize; j++)
                 {
-                    result[offset + j] = (byte)(block[j] ^ feedback[j]);
+                    result[offset + j] = (byte)(data[offset + j] ^ keystreamBlocks[i][j]);
                 }
-            }
-
+            });
+            
             return result;
         }
 
@@ -419,26 +460,36 @@ namespace CryptoLib.Modes
         private byte[] EncryptCTR(byte[] data)
         {
             int blockSize = _blockSize;
+            int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
-            byte[] counter = (byte[])_initializationVector.Clone();
-
-            for (int i = 0; i < data.Length / blockSize; i++)
+            
+            var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+            
+            
+            Parallel.For(0, blockCount, options, i =>
             {
+                // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId}: CTR блок {i}");
+                
+                byte[] blockCounter = (byte[])_initializationVector.Clone();
+                if (i > 0) IncrementCounterNtimes(blockCounter, i);
+                
+                
+                byte[] keystream = _algorithm.EncryptBlock(blockCounter);
+                
                 int offset = i * blockSize;
-                byte[] block = new byte[blockSize];
-                Array.Copy(data, offset, block, 0, blockSize);
-
-                byte[] encryptedCounter = _algorithm.EncryptBlock(counter);
-
                 for (int j = 0; j < blockSize; j++)
                 {
-                    result[offset + j] = (byte)(block[j] ^ encryptedCounter[j]);
+                    result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
                 }
-
-                IncrementCounter(counter);
-            }
-
+            });
+            
             return result;
+        }
+
+        private void IncrementCounterNtimes(byte[] counter, int times)
+        {
+            for (int t = 0; t < times; t++)
+                IncrementCounter(counter);
         }
 
         private byte[] DecryptCTR(byte[] data)
@@ -446,59 +497,71 @@ namespace CryptoLib.Modes
             return EncryptCTR(data);
         }
 
-        private byte[] EncryptRandomDelta(byte[] data)
+       private byte[] EncryptRandomDelta(byte[] data)
         {
             int blockSize = _blockSize;
+            int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
-            byte[] delta = (byte[])_initializationVector.Clone();
-
-            for (int i = 0; i < data.Length / blockSize; i++)
+            
+            Parallel.For(0, blockCount, i =>
             {
-                int offset = i * blockSize;
+                // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId}: RD  блок {i}");
+                byte[] delta = ComputeDeltaForBlock(_initializationVector, i);
+                
                 byte[] block = new byte[blockSize];
-                Array.Copy(data, offset, block, 0, blockSize);
-
-                Random random = new Random(BitConverter.ToInt32(delta, 0));
-                random.NextBytes(delta);
-
+                Array.Copy(data, i * blockSize, block, 0, blockSize);
+                
                 for (int j = 0; j < blockSize; j++)
                 {
                     block[j] ^= delta[j];
                 }
-
+                
                 byte[] encryptedBlock = _algorithm.EncryptBlock(block);
-                Array.Copy(encryptedBlock, 0, result, offset, blockSize);
-            }
-
+                Array.Copy(encryptedBlock, 0, result, i * blockSize, blockSize);
+            });
+            
             return result;
+        }
+
+        private byte[] ComputeDeltaForBlock(byte[] initialDelta, int blockIndex)
+        {
+            byte[] delta = (byte[])initialDelta.Clone();
+            
+            for (int t = 0; t <= blockIndex; t++)
+            {
+                Random random = new Random(BitConverter.ToInt32(delta, 0));
+                random.NextBytes(delta);
+            }
+            
+            return delta;
         }
 
         private byte[] DecryptRandomDelta(byte[] data)
         {
             int blockSize = _blockSize;
+            int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
-            byte[] delta = (byte[])_initializationVector.Clone();
-
-            for (int i = 0; i < data.Length / blockSize; i++)
+            
+            Parallel.For(0, blockCount, i =>
             {
-                int offset = i * blockSize;
+
+                // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId}: RD  блок {i}");
+                byte[] delta = ComputeDeltaForBlock(_initializationVector, i);
+                
                 byte[] encryptedBlock = new byte[blockSize];
-                Array.Copy(data, offset, encryptedBlock, 0, blockSize);
-
+                Array.Copy(data, i * blockSize, encryptedBlock, 0, blockSize);
+                
                 byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
-
-                Random random = new Random(BitConverter.ToInt32(delta, 0));
-                random.NextBytes(delta);
-
+                
+                // XOR с delta
                 for (int j = 0; j < blockSize; j++)
                 {
-                    result[offset + j] = (byte)(decryptedBlock[j] ^ delta[j]);
+                    result[i * blockSize + j] = (byte)(decryptedBlock[j] ^ delta[j]);
                 }
-            }
-
+            });
+            
             return result;
         }
-
         private void IncrementCounter(byte[] counter)
         {
             for (int i = counter.Length - 1; i >= 0; i--)
