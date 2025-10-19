@@ -100,3 +100,8 @@
 /home/ares/CryptoLab_DES/CryptoTests/bin/Debug/net8.0/CryptoLib.dll
 /home/ares/CryptoLab_DES/CryptoTests/bin/Debug/net8.0/CryptoLib.pdb
 /home/ares/CryptoLab_DES/CryptoTests/obj/Debug/net8.0/CryptoTests.sourcelink.json
+/home/ares/CryptoLab_DES/CryptoTests/bin/Debug/net8.0/TestData/archive.zip
+/home/ares/CryptoLab_DES/CryptoTests/bin/Debug/net8.0/TestData/audio.mp3
+/home/ares/CryptoLab_DES/CryptoTests/bin/Debug/net8.0/TestData/image.jpg
+/home/ares/CryptoLab_DES/CryptoTests/bin/Debug/net8.0/TestData/text.txt
+/home/ares/CryptoLab_DES/CryptoTests/bin/Debug/net8.0/TestData/video.mp4

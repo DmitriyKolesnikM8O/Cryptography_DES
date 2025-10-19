@@ -255,49 +255,75 @@ namespace CryptoLib.Modes
             return result;
         }
 
+        // private byte[] DecryptCBC(byte[] data)
+        // {
+        //     int blockSize = _blockSize;
+        //     int blockCount = data.Length / blockSize;
+        //     byte[] result = new byte[data.Length];
+
+        //     // Получаем все зашифрованные блоки
+        //     byte[][] encryptedBlocks = new byte[blockCount][];
+        //     for (int i = 0; i < blockCount; i++)
+        //     {
+        //         encryptedBlocks[i] = new byte[blockSize];
+        //         Array.Copy(data, i * blockSize, encryptedBlocks[i], 0, blockSize);
+        //     }
+
+
+        //     byte[][] decryptedBlocks = new byte[blockCount][];
+        //     var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+        //     var decryptLock = new object(); 
+
+        //     Parallel.For(0, blockCount, options, i =>
+        //     {
+        //         // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId} обрабатывает блок {i}");
+        //         byte[] block;
+        //         lock (decryptLock)
+        //         {
+        //             block = (byte[])_algorithm.DecryptBlock(encryptedBlocks[i]).Clone();
+        //         }
+        //         decryptedBlocks[i] = block;
+        //     });
+
+        //     // Последовательно применяем XOR
+        //     byte[] previousCipherBlock = (byte[])_initializationVector.Clone();
+        //     for (int i = 0; i < blockCount; i++)
+        //     {
+        //         for (int j = 0; j < blockSize; j++)
+        //         {
+        //             result[i * blockSize + j] = (byte)(decryptedBlocks[i][j] ^ previousCipherBlock[j]);
+        //         }
+        //         previousCipherBlock = encryptedBlocks[i];
+        //     }
+
+        //     return result;
+        // }
+        
         private byte[] DecryptCBC(byte[] data)
-{
-    int blockSize = _blockSize;
-    int blockCount = data.Length / blockSize;
-    byte[] result = new byte[data.Length];
-    
-    // Получаем все зашифрованные блоки
-    byte[][] encryptedBlocks = new byte[blockCount][];
-    for (int i = 0; i < blockCount; i++)
-    {
-        encryptedBlocks[i] = new byte[blockSize];
-        Array.Copy(data, i * blockSize, encryptedBlocks[i], 0, blockSize);
-    }
-    
-    
-    byte[][] decryptedBlocks = new byte[blockCount][];
-    var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
-    var decryptLock = new object(); 
-    
-    Parallel.For(0, blockCount, options, i =>
-    {
-        // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId} обрабатывает блок {i}");
-        byte[] block;
-        lock (decryptLock)
         {
-            block = (byte[])_algorithm.DecryptBlock(encryptedBlocks[i]).Clone();
+            int blockSize = _blockSize;
+            byte[] result = new byte[data.Length];
+            byte[] previousCipherBlock = (byte[])_initializationVector.Clone();
+
+            for (int i = 0; i < data.Length / blockSize; i++)
+            {
+                int offset = i * blockSize;
+                byte[] encryptedBlock = new byte[blockSize];
+                Array.Copy(data, offset, encryptedBlock, 0, blockSize);
+
+                byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
+
+                for (int j = 0; j < blockSize; j++)
+                {
+                    decryptedBlock[j] ^= previousCipherBlock[j];
+                }
+
+                Array.Copy(decryptedBlock, 0, result, offset, blockSize);
+                previousCipherBlock = encryptedBlock;
+            }
+            
+            return result;
         }
-        decryptedBlocks[i] = block;
-    });
-    
-    // Последовательно применяем XOR
-    byte[] previousCipherBlock = (byte[])_initializationVector.Clone();
-    for (int i = 0; i < blockCount; i++)
-    {
-        for (int j = 0; j < blockSize; j++)
-        {
-            result[i * blockSize + j] = (byte)(decryptedBlocks[i][j] ^ previousCipherBlock[j]);
-        }
-        previousCipherBlock = encryptedBlocks[i];
-    }
-    
-    return result;
-}
 
 
 
@@ -408,46 +434,71 @@ namespace CryptoLib.Modes
             return result;
         }
 
+        // private byte[] EncryptOFB(byte[] data)
+        // {
+        //     int blockSize = _blockSize;
+        //     int blockCount = data.Length / blockSize;
+        //     byte[] result = new byte[data.Length];
+
+        //     byte[] iv = (byte[])_initializationVector.Clone();
+        //     byte[][] keystreamBlocks = new byte[blockCount][];
+
+        //     var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+        //     var lockObj = new object();
+
+
+        //     Parallel.For(0, blockCount, options, i =>
+        //     {
+        //         // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId}: блок {i}, {i+1} Encrypt");
+        //         byte[] tempIv = (byte[])iv.Clone();
+
+        //         for (int j = 0; j < i; j++)
+        //         {
+        //             lock (lockObj)
+        //             {
+        //                 tempIv = _algorithm.EncryptBlock(tempIv);
+        //             }
+        //         }
+        //         lock (lockObj)
+        //         {
+        //             keystreamBlocks[i] = _algorithm.EncryptBlock(tempIv);
+        //         }
+        //     });
+
+
+        //     Parallel.For(0, blockCount, options, i =>
+        //     {
+        //         int offset = i * blockSize;
+        //         for (int j = 0; j < blockSize; j++)
+        //         {
+        //             result[offset + j] = (byte)(data[offset + j] ^ keystreamBlocks[i][j]);
+        //         }
+        //     });
+
+        //     return result;
+        // }
+        
         private byte[] EncryptOFB(byte[] data)
         {
             int blockSize = _blockSize;
-            int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
-            
-            byte[] iv = (byte[])_initializationVector.Clone();
-            byte[][] keystreamBlocks = new byte[blockCount][];
-            
-            var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
-            var lockObj = new object();
-            
-            
-            Parallel.For(0, blockCount, options, i =>
-            {
-                // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId}: блок {i}, {i+1} Encrypt");
-                byte[] tempIv = (byte[])iv.Clone();
-            
-                for (int j = 0; j < i; j++)
-                {
-                    lock (lockObj)
-                    {
-                        tempIv = _algorithm.EncryptBlock(tempIv);
-                    }
-                }
-                lock (lockObj)
-                {
-                    keystreamBlocks[i] = _algorithm.EncryptBlock(tempIv);
-                }
-            });
-            
-            
-            Parallel.For(0, blockCount, options, i =>
+            byte[] feedback = (byte[])_initializationVector.Clone();
+
+            for (int i = 0; i < data.Length / blockSize; i++)
             {
                 int offset = i * blockSize;
+                byte[] keystream = _algorithm.EncryptBlock(feedback);
+                
+                // Для OFB обратная связь не зависит от данных
+                feedback = keystream;
+
+                byte[] block = new byte[blockSize];
+                Array.Copy(data, offset, block, 0, blockSize);
                 for (int j = 0; j < blockSize; j++)
                 {
-                    result[offset + j] = (byte)(data[offset + j] ^ keystreamBlocks[i][j]);
+                    result[offset + j] = (byte)(block[j] ^ keystream[j]);
                 }
-            });
+            }
             
             return result;
         }
@@ -457,23 +508,54 @@ namespace CryptoLib.Modes
             return EncryptOFB(data);
         }
 
+        // private byte[] EncryptCTR(byte[] data)
+        // {
+        //     int blockSize = _blockSize;
+        //     int blockCount = data.Length / blockSize;
+        //     byte[] result = new byte[data.Length];
+
+        //     var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+
+
+        //     Parallel.For(0, blockCount, options, i =>
+        //     {
+        //         // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId}: CTR блок {i}");
+
+        //         byte[] blockCounter = (byte[])_initializationVector.Clone();
+        //         if (i > 0) IncrementCounterNtimes(blockCounter, i);
+
+
+        //         byte[] keystream = _algorithm.EncryptBlock(blockCounter);
+
+        //         int offset = i * blockSize;
+        //         for (int j = 0; j < blockSize; j++)
+        //         {
+        //             result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
+        //         }
+        //     });
+
+        //     return result;
+        // }
+        
         private byte[] EncryptCTR(byte[] data)
         {
             int blockSize = _blockSize;
             int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
             
-            var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
-            
-            
-            Parallel.For(0, blockCount, options, i =>
+            Parallel.For(0, blockCount, i =>
             {
-                // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId}: CTR блок {i}");
-                
                 byte[] blockCounter = (byte[])_initializationVector.Clone();
-                if (i > 0) IncrementCounterNtimes(blockCounter, i);
                 
-                
+                // Напрямую вычисляем значение счетчика для блока 'i'
+                // Это работает для IV до 8 байт (ulong)
+                ulong counterValue = BitConverter.ToUInt64(blockCounter, 0);
+                counterValue += (ulong)i;
+                byte[] counterBytes = BitConverter.GetBytes(counterValue);
+
+                // Копируем вычисленные байты обратно в массив счетчика
+                Array.Copy(counterBytes, blockCounter, counterBytes.Length);
+
                 byte[] keystream = _algorithm.EncryptBlock(blockCounter);
                 
                 int offset = i * blockSize;
