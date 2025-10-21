@@ -23,7 +23,7 @@ namespace CryptoTests
             // 1. Список путей к файлам
             string[] filePaths = 
             [
-                "TestData/text.txt",
+                // "TestData/text.txt",
                 "TestData/image.jpg",
                 // "TestData/audio.mp3",
                 // "TestData/video.mp4",

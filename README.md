@@ -49,5 +49,4 @@ CryptoLab_DES/
 
 TO-DO:
 - почему я zeroIndex в BitPermutations всегда false кидаю, в чем смысл параметра
-- что там с padding
-- как пройти сложные тесты 
+- 

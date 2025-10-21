@@ -13,6 +13,8 @@ namespace CryptoLib.Modes
     {
         private readonly ISymmetricCipher _algorithm;
         private readonly CipherMode _mode;
+
+        private readonly object _algorithmLock = new object();
         private readonly PaddingMode _padding;
         private readonly byte[] _initializationVector;
         private readonly int _blockSize;
@@ -136,6 +138,9 @@ namespace CryptoLib.Modes
             await File.WriteAllBytesAsync(outputFilePath, encryptedData);
         }
 
+
+
+
         public async Task DecryptAsync(string inputFilePath, string outputFilePath)
         {
             if (!File.Exists(inputFilePath))
@@ -205,7 +210,11 @@ namespace CryptoLib.Modes
                 byte[] block = new byte[blockSize];
                 Array.Copy(data, offset, block, 0, blockSize);
                 
-                byte[] encryptedBlock = _algorithm.EncryptBlock(block);
+                byte[] encryptedBlock;
+                lock (_algorithmLock)
+                {
+                    encryptedBlock = _algorithm.EncryptBlock(block);
+                }
                 Array.Copy(encryptedBlock, 0, result, offset, blockSize);
             });
             
@@ -223,7 +232,11 @@ namespace CryptoLib.Modes
                 byte[] block = new byte[blockSize];
                 Array.Copy(data, offset, block, 0, blockSize);
                 
-                byte[] decryptedBlock = _algorithm.DecryptBlock(block);
+                byte[] decryptedBlock;
+                lock (_algorithmLock)
+                {
+                    decryptedBlock = _algorithm.DecryptBlock(block);
+                }
                 Array.Copy(decryptedBlock, 0, result, offset, blockSize);
             });
             
@@ -328,61 +341,101 @@ namespace CryptoLib.Modes
 
 
         private byte[] EncryptPCBC(byte[] data)
+{
+    int blockSize = _blockSize;
+    byte[] result = new byte[data.Length];
+    byte[] previousPlaintext = (byte[])_initializationVector.Clone();
+    byte[] previousCiphertext = (byte[])_initializationVector.Clone();
+
+    for (int i = 0; i < data.Length / blockSize; i++)
+    {
+        int offset = i * blockSize;
+        byte[] originalBlock = new byte[blockSize]; // 1. Сохраняем оригинальный блок
+        Array.Copy(data, offset, originalBlock, 0, blockSize);
+
+        byte[] blockToEncrypt = (byte[])originalBlock.Clone(); // Копируем для модификации
+
+        for (int j = 0; j < blockSize; j++)
         {
-            int blockSize = _blockSize;
-            byte[] result = new byte[data.Length];
-            byte[] previousInput = (byte[])_initializationVector.Clone();
-            byte[] previousOutput = (byte[])_initializationVector.Clone();
-
-            for (int i = 0; i < data.Length / blockSize; i++)
-            {
-                int offset = i * blockSize;
-                byte[] block = new byte[blockSize];
-                Array.Copy(data, offset, block, 0, blockSize);
-
-                for (int j = 0; j < blockSize; j++)
-                {
-                    block[j] ^= (byte)(previousInput[j] ^ previousOutput[j]);
-                }
-
-                byte[] encryptedBlock = _algorithm.EncryptBlock(block);
-                Array.Copy(encryptedBlock, 0, result, offset, blockSize);
-
-                previousInput = (byte[])block.Clone();
-                previousOutput = (byte[])encryptedBlock.Clone();
-            }
-
-            return result;
+            blockToEncrypt[j] ^= (byte)(previousPlaintext[j] ^ previousCiphertext[j]);
         }
+
+        byte[] encryptedBlock = _algorithm.EncryptBlock(blockToEncrypt);
+        Array.Copy(encryptedBlock, 0, result, offset, blockSize);
+
+        // 2. Обновляем переменные состояния правильными значениями
+        previousPlaintext = (byte[])originalBlock.Clone();
+        previousCiphertext = (byte[])encryptedBlock.Clone();
+    }
+
+    return result;
+}
+
+        // private byte[] DecryptPCBC(byte[] data)
+        // {
+        //     int blockSize = _blockSize;
+        //     byte[] result = new byte[data.Length];
+        //     byte[] previousInput = (byte[])_initializationVector.Clone();
+        //     byte[] previousOutput = (byte[])_initializationVector.Clone();
+
+        //     for (int i = 0; i < data.Length / blockSize; i++)
+        //     {
+        //         int offset = i * blockSize;
+        //         byte[] encryptedBlock = new byte[blockSize];
+        //         Array.Copy(data, offset, encryptedBlock, 0, blockSize);
+
+        //         byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
+
+        //         for (int j = 0; j < blockSize; j++)
+        //         {
+        //             decryptedBlock[j] ^= (byte)(previousInput[j] ^ previousOutput[j]);
+        //         }
+
+        //         Array.Copy(decryptedBlock, 0, result, offset, blockSize);
+
+        //         previousInput = (byte[])decryptedBlock.Clone();
+        //         previousOutput = (byte[])encryptedBlock.Clone();
+        //     }
+
+        //     return result;
+        // }
 
         private byte[] DecryptPCBC(byte[] data)
+{
+    int blockSize = _blockSize;
+    byte[] result = new byte[data.Length];
+    byte[] previousInput = (byte[])_initializationVector.Clone();
+    byte[] previousOutput = (byte[])_initializationVector.Clone();
+
+    for (int i = 0; i < data.Length / blockSize; i++)
+    {
+        int offset = i * blockSize;
+        byte[] encryptedBlock = new byte[blockSize];
+        Array.Copy(data, offset, encryptedBlock, 0, blockSize);
+
+        byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
+
+        // XOR с комбинацией previousInput и previousOutput
+        for (int j = 0; j < blockSize; j++)
         {
-            int blockSize = _blockSize;
-            byte[] result = new byte[data.Length];
-            byte[] previousInput = (byte[])_initializationVector.Clone();
-            byte[] previousOutput = (byte[])_initializationVector.Clone();
-
-            for (int i = 0; i < data.Length / blockSize; i++)
-            {
-                int offset = i * blockSize;
-                byte[] encryptedBlock = new byte[blockSize];
-                Array.Copy(data, offset, encryptedBlock, 0, blockSize);
-
-                byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
-
-                for (int j = 0; j < blockSize; j++)
-                {
-                    decryptedBlock[j] ^= (byte)(previousInput[j] ^ previousOutput[j]);
-                }
-
-                Array.Copy(decryptedBlock, 0, result, offset, blockSize);
-
-                previousInput = (byte[])decryptedBlock.Clone();
-                previousOutput = (byte[])encryptedBlock.Clone();
-            }
-
-            return result;
+            decryptedBlock[j] ^= (byte)(previousInput[j] ^ previousOutput[j]);
         }
+
+        Array.Copy(decryptedBlock, 0, result, offset, blockSize);
+
+        // Исправление: previousInput = исходный открытый текст
+        byte[] plainBlock = new byte[blockSize];
+        for (int j = 0; j < blockSize; j++)
+        {
+            plainBlock[j] = (byte)(encryptedBlock[j] ^ (byte)(previousInput[j] ^ previousOutput[j]));
+        }
+
+        previousInput = (byte[])decryptedBlock.Clone(); // Используем расшифрованный блок
+        previousOutput = (byte[])encryptedBlock.Clone();
+    }
+
+    return result;
+}
 
         private byte[] EncryptCFB(byte[] data)
         {
@@ -537,34 +590,45 @@ namespace CryptoLib.Modes
         //     return result;
         // }
         
-        private byte[] EncryptCTR(byte[] data)
+       private byte[] EncryptCTR(byte[] data)
         {
             int blockSize = _blockSize;
             int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
-            
+
             Parallel.For(0, blockCount, i =>
             {
+                // 1. Создаем копию счетчика для этого конкретного блока
                 byte[] blockCounter = (byte[])_initializationVector.Clone();
-                
-                // Напрямую вычисляем значение счетчика для блока 'i'
-                // Это работает для IV до 8 байт (ulong)
-                ulong counterValue = BitConverter.ToUInt64(blockCounter, 0);
-                counterValue += (ulong)i;
-                byte[] counterBytes = BitConverter.GetBytes(counterValue);
 
-                // Копируем вычисленные байты обратно в массив счетчика
-                Array.Copy(counterBytes, blockCounter, counterBytes.Length);
+                // 2. "Перематываем" счетчик на i позиций.
+                // Это быстрая операция, так как мы знаем, на сколько нужно увеличить.
+                // Преобразуем последние байты в число, увеличиваем и преобразуем обратно.
+                // Это намного быстрее, чем цикл инкрементов.
+                long counterValue = BitConverter.ToInt64(blockCounter, blockCounter.Length - 8);
+                counterValue += (long)i;
+                byte[] incrementedBytes = BitConverter.GetBytes(counterValue);
+                Array.Copy(incrementedBytes, 0, blockCounter, blockCounter.Length - 8, 8);
 
-                byte[] keystream = _algorithm.EncryptBlock(blockCounter);
-                
+                // 3. Шифруем счетчик для получения гаммы (keystream)
+                byte[] keystream;
+                lock (_algorithmLock)
+                {
+                    keystream = _algorithm.EncryptBlock(blockCounter);
+                }
+
+                // 4. Применяем XOR к данным
                 int offset = i * blockSize;
                 for (int j = 0; j < blockSize; j++)
                 {
-                    result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
+                    // Убедимся, что не выходим за пределы исходных данных (важно для последнего блока)
+                    if (offset + j < data.Length)
+                    {
+                        result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
+                    }
                 }
             });
-            
+
             return result;
         }
 
@@ -598,7 +662,11 @@ namespace CryptoLib.Modes
                     block[j] ^= delta[j];
                 }
                 
-                byte[] encryptedBlock = _algorithm.EncryptBlock(block);
+                byte[] encryptedBlock;
+                lock (_algorithmLock)
+                {
+                    encryptedBlock = _algorithm.EncryptBlock(block);
+                }
                 Array.Copy(encryptedBlock, 0, result, i * blockSize, blockSize);
             });
             
@@ -608,13 +676,9 @@ namespace CryptoLib.Modes
         private byte[] ComputeDeltaForBlock(byte[] initialDelta, int blockIndex)
         {
             byte[] delta = (byte[])initialDelta.Clone();
-            
-            for (int t = 0; t <= blockIndex; t++)
-            {
-                Random random = new Random(BitConverter.ToInt32(delta, 0));
-                random.NextBytes(delta);
-            }
-            
+            int seed = BitConverter.ToInt32(initialDelta, 0) ^ blockIndex; // Фиксированный seed
+            Random random = new Random(seed);
+            random.NextBytes(delta);
             return delta;
         }
 
@@ -633,7 +697,11 @@ namespace CryptoLib.Modes
                 byte[] encryptedBlock = new byte[blockSize];
                 Array.Copy(data, i * blockSize, encryptedBlock, 0, blockSize);
                 
-                byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
+                byte[] decryptedBlock;
+                lock (_algorithmLock)
+                {
+                    decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
+                }
                 
                 // XOR с delta
                 for (int j = 0; j < blockSize; j++)
@@ -654,37 +722,36 @@ namespace CryptoLib.Modes
         }
 
         private byte[] ApplyPadding(byte[] data, int blockSize)
-        {
-            int paddingLength = blockSize - (data.Length % blockSize);
-            if (paddingLength == blockSize)
-                return data;
-            
-            return _padding switch
-            {
-                PaddingMode.Zeros => ApplyZerosPadding(data, paddingLength),
-                PaddingMode.PKCS7 => ApplyPKCS7Padding(data, paddingLength),
-                PaddingMode.ANSIX923 => ApplyAnsiX923Padding(data, paddingLength),
-                PaddingMode.ISO10126 => ApplyIso10126Padding(data, paddingLength),
-                _ => throw new NotSupportedException($"Режим паддинга {_padding} не поддерживается")
-            };
-        }
+{
+    int paddingLength = blockSize - (data.Length % blockSize);
+    // Теперь, если data.Length % blockSize == 0, paddingLength будет равен blockSize.
+    // Это гарантирует, что мы всегда добавляем дополнение.
+
+    // Ваш существующий switch-блок остается здесь
+    return _padding switch
+    {
+        PaddingMode.Zeros => ApplyZerosPadding(data, paddingLength),
+        PaddingMode.PKCS7 => ApplyPKCS7Padding(data, paddingLength),
+        PaddingMode.ANSIX923 => ApplyAnsiX923Padding(data, paddingLength),
+        PaddingMode.ISO10126 => ApplyIso10126Padding(data, paddingLength),
+        _ => throw new NotSupportedException($"Режим паддинга {_padding} не поддерживается")
+    };
+}
 
         private byte[] RemovePadding(byte[] data)
-        {
+{
+    if (data.Length == 0 || data.Length % _blockSize != 0)
+        return data;
 
-            if (data.Length == 0 || data.Length % _blockSize != 0)
-                return data;
-            
-
-            return _padding switch
-            {
-                PaddingMode.Zeros => RemoveZerosPadding(data),
-                PaddingMode.PKCS7 => RemovePKCS7Padding(data),
-                PaddingMode.ANSIX923 => RemoveAnsiX923Padding(data),
-                PaddingMode.ISO10126 => RemoveIso10126Padding(data),
-                _ => throw new NotSupportedException($"Режим паддинга {_padding} не поддерживается")
-            };
-        }
+    return _padding switch
+    {
+        PaddingMode.Zeros => RemoveZerosPadding(data),
+        PaddingMode.PKCS7 => RemovePKCS7Padding(data),
+        PaddingMode.ANSIX923 => RemoveAnsiX923Padding(data),
+        PaddingMode.ISO10126 => RemoveIso10126Padding(data),
+        _ => throw new NotSupportedException($"Режим паддинга {_padding} не поддерживается")
+    };
+}
 
         private byte[] ApplyZerosPadding(byte[] data, int paddingLength)
         {
@@ -714,7 +781,9 @@ namespace CryptoLib.Modes
             if (data.Length == 0) return data;
             
             byte paddingValue = data[^1];
-            if (paddingValue == 0 || paddingValue > data.Length) return data;
+            
+            // Убираем проверку на 0 - в PKCS7 padding value не может быть 0
+            if (paddingValue > data.Length) return data;
             
             for (int i = data.Length - paddingValue; i < data.Length; i++)
             {
