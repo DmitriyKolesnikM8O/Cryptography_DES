@@ -216,5 +216,34 @@ namespace CryptoTests
             // Assert
             Assert.Equal(testData, decrypted.Take(testData.Length).ToArray());
         }
+
+        // [Fact]
+        // public void PerformanceTest_EncryptBlock_Raw()
+        // {
+        //     // Arrange
+        //     var key = new byte[] { 0x13, 0x34, 0x57, 0x79, 0x9B, 0xBC, 0xDF, 0xF1 };
+        //     var block = new byte[] { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
+            
+        //     var des = new DESAlgorithm();
+        //     des.SetRoundKeys(key);
+
+        //     int iterations = 1_000_000; // Один миллион вызовов
+        //     var stopwatch = new System.Diagnostics.Stopwatch();
+
+        //     // Act
+        //     stopwatch.Start();
+        //     for (int i = 0; i < iterations; i++)
+        //     {
+        //         des.EncryptBlock(block);
+        //     }
+        //     stopwatch.Stop();
+
+        //     // Assert & Output
+        //     // Выводим результат в консоль теста
+        //     Console.WriteLine($"DES EncryptBlock x {iterations} times took: {stopwatch.ElapsedMilliseconds} ms");
+            
+        //     // Тест должен быть очень быстрым. Установим щедрый порог, например, 2 секунды.
+        //     Assert.True(stopwatch.ElapsedMilliseconds < 2000); 
+        // }
     }
 }

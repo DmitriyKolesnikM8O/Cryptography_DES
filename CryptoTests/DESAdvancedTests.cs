@@ -1,11 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-using CryptoLib.Interfaces; // Убедись, что твои интерфейсы и классы здесь доступны
-using CryptoLib.Modes;      // Убедись, что твои интерфейсы и классы здесь доступны
-using Xunit;
+using CryptoLib.Modes;
 
 namespace CryptoTests
 {
@@ -23,7 +16,7 @@ namespace CryptoTests
             // 1. Список путей к файлам
             string[] filePaths = 
             [
-                // "TestData/text.txt",
+                "TestData/text.txt",
                 "TestData/image.jpg",
                 // "TestData/audio.mp3",
                 // "TestData/video.mp4",

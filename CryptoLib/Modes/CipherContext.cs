@@ -19,6 +19,10 @@ namespace CryptoLib.Modes
         private readonly byte[] _initializationVector;
         private readonly int _blockSize;
 
+        private (byte[] Plaintext, byte[] Ciphertext) _pcbcFeedbackRegisters;
+
+        private byte[] _feedbackRegister = default!;
+
         public CipherContext(
             byte[] key,
             CipherMode mode,
@@ -35,6 +39,21 @@ namespace CryptoLib.Modes
             _blockSize = _algorithm.BlockSize;
 
             ValidateParameters();
+
+            
+        }
+        
+        private void InitializeState()
+        {
+            if (_mode != CipherMode.ECB && _initializationVector != null)
+            {
+                _feedbackRegister = (byte[])_initializationVector.Clone();
+                _pcbcFeedbackRegisters = 
+                (
+                    (byte[])_initializationVector.Clone(), 
+                    (byte[])_initializationVector.Clone()
+                );
+            }
         }
 
         private ISymmetricCipher CreateAlgorithm(byte[] key, KeyValuePair<string, object>[] additionalParameters)
@@ -46,7 +65,7 @@ namespace CryptoLib.Modes
                 if (!algorithmParam.Equals(default(KeyValuePair<string, object>)))
                 {
                     var algorithmValue = algorithmParam.Value.ToString();
-                    
+
                     if (algorithmValue.Contains("DEAL"))
                     {
                         // Для DEAL определяем тип по размеру ключа
@@ -62,7 +81,7 @@ namespace CryptoLib.Modes
                     {
                         return new DESAlgorithm();
                     }
-                    
+
                     return algorithmValue switch
                     {
                         "DEAL" => new DEALAlgorithm(), // по умолчанию 128-bit
@@ -100,6 +119,7 @@ namespace CryptoLib.Modes
 
         public async Task EncryptAsync(byte[] inputData, byte[] output)
         {
+            InitializeState(); 
             if (inputData == null) throw new ArgumentNullException(nameof(inputData));
             if (output == null) throw new ArgumentNullException(nameof(output));
 
@@ -115,6 +135,7 @@ namespace CryptoLib.Modes
 
         public async Task DecryptAsync(byte[] inputData, byte[] output)
         {
+            InitializeState(); 
             if (inputData == null) throw new ArgumentNullException(nameof(inputData));
             if (output == null) throw new ArgumentNullException(nameof(output));
 
@@ -128,46 +149,150 @@ namespace CryptoLib.Modes
             });
         }
 
+        // Ебанем весь файл в оперативку? ГО
+        // public async Task EncryptAsync(string inputFilePath, string outputFilePath)
+        // {
+        //     if (!File.Exists(inputFilePath))
+        //         throw new FileNotFoundException($"Входной файл не найден: {inputFilePath}");
+
+        //     byte[] inputData = await File.ReadAllBytesAsync(inputFilePath);
+        //     byte[] encryptedData = await EncryptDataAsync(inputData);
+        //     await File.WriteAllBytesAsync(outputFilePath, encryptedData);
+        // }
+
+        // public async Task DecryptAsync(string inputFilePath, string outputFilePath)
+        // {
+        //     if (!File.Exists(inputFilePath))
+        //         throw new FileNotFoundException($"Входной файл не найден: {inputFilePath}");
+
+        //     byte[] inputData = await File.ReadAllBytesAsync(inputFilePath);
+        //     byte[] decryptedData = await DecryptDataAsync(inputData);
+        //     await File.WriteAllBytesAsync(outputFilePath, decryptedData);
+        // }
+
         public async Task EncryptAsync(string inputFilePath, string outputFilePath)
         {
+            InitializeState(); 
             if (!File.Exists(inputFilePath))
                 throw new FileNotFoundException($"Входной файл не найден: {inputFilePath}");
 
-            byte[] inputData = await File.ReadAllBytesAsync(inputFilePath);
-            byte[] encryptedData = await EncryptDataAsync(inputData);
-            await File.WriteAllBytesAsync(outputFilePath, encryptedData);
+            await using var inputFileStream = new FileStream(inputFilePath, FileMode.Open, FileAccess.Read);
+            await using var outputFileStream = new FileStream(outputFilePath, FileMode.Create, FileAccess.Write);
+            await EncryptAsync(inputFileStream, outputFileStream);
         }
-
-
-
 
         public async Task DecryptAsync(string inputFilePath, string outputFilePath)
         {
+            InitializeState(); 
             if (!File.Exists(inputFilePath))
                 throw new FileNotFoundException($"Входной файл не найден: {inputFilePath}");
 
-            byte[] inputData = await File.ReadAllBytesAsync(inputFilePath);
-            byte[] decryptedData = await DecryptDataAsync(inputData);
-            await File.WriteAllBytesAsync(outputFilePath, decryptedData);
+            await using var inputFileStream = new FileStream(inputFilePath, FileMode.Open, FileAccess.Read);
+            await using var outputFileStream = new FileStream(outputFilePath, FileMode.Create, FileAccess.Write);
+            await DecryptAsync(inputFileStream, outputFileStream); // Делегируем потоковой версии
         }
 
-        private async Task<byte[]> EncryptDataAsync(byte[] data)
+        // НОВЫЕ ОСНОВНЫЕ МЕТОДЫ
+        public async Task EncryptAsync(Stream inputStream, Stream outputStream)
         {
-            return await Task.Run(() =>
+            InitializeState();
+            const int bufferSize = 65536; 
+            byte[] buffer = new byte[bufferSize];
+            int bytesRead;
+
+            while ((bytesRead = await inputStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
             {
-                byte[] paddedData = ApplyPadding(data, _blockSize);
-                return EncryptData(paddedData);
-            });
+                // Проверяем, является ли этот чанк последним.
+                // Самый надежный способ - если мы прочитали меньше данных, чем размер буфера.
+                bool isLastChunk = bytesRead < bufferSize;
+
+                byte[] chunkToEncrypt;
+                if (isLastChunk)
+                {
+                    // Если чанк последний, мы должны его обрезать до реального размера и применить паддинг.
+                    byte[] finalData = new byte[bytesRead];
+                    Array.Copy(buffer, finalData, bytesRead);
+                    chunkToEncrypt = ApplyPadding(finalData, _blockSize);
+                }
+                else
+                {
+                    // Если чанк не последний, он должен быть полным. Шифруем его как есть.
+                    // Никакого паддинга здесь не нужно.
+                    chunkToEncrypt = buffer;
+                }
+                
+                byte[] encryptedChunk = EncryptData(chunkToEncrypt);
+                
+                await outputStream.WriteAsync(encryptedChunk, 0, encryptedChunk.Length);
+            }
         }
 
-        private async Task<byte[]> DecryptDataAsync(byte[] data)
+        public async Task DecryptAsync(Stream inputStream, Stream outputStream)
         {
-            return await Task.Run(() =>
+            InitializeState();
+            const int bufferSize = 65536;
+            byte[] buffer = new byte[bufferSize];
+            int bytesRead;
+            
+            // Создаем буфер для хранения предыдущего прочитанного блока.
+            // Мы выделяем память ОДИН РАЗ, а не в цикле!
+            byte[] previousChunk = new byte[bufferSize];
+            int previousBytesRead = 0;
+
+            // 1. Читаем самый первый блок в `previousChunk`
+            previousBytesRead = await inputStream.ReadAsync(previousChunk, 0, previousChunk.Length);
+
+            while (previousBytesRead > 0)
             {
-                byte[] decryptedData = DecryptData(data);
-                return RemovePadding(decryptedData);
-            });
+                // 2. Читаем следующий блок в основной `buffer`
+                bytesRead = await inputStream.ReadAsync(buffer, 0, buffer.Length);
+
+                // 3. Проверяем, был ли предыдущий блок последним
+                if (bytesRead == 0)
+                {
+                    // Да, `previousChunk` - это последний блок.
+                    // Обрезаем его до реального размера.
+                    byte[] finalChunk = new byte[previousBytesRead];
+                    Array.Copy(previousChunk, finalChunk, previousBytesRead);
+
+                    // Расшифровываем и удаляем паддинг
+                    byte[] decryptedFinal = DecryptData(finalChunk);
+                    byte[] unpaddedFinal = RemovePadding(decryptedFinal);
+                    await outputStream.WriteAsync(unpaddedFinal, 0, unpaddedFinal.Length);
+                }
+                else
+                {
+                    // Нет, `previousChunk` - это промежуточный блок.
+                    // Просто расшифровываем и записываем его.
+                    byte[] decryptedPrevious = DecryptData(previousChunk);
+                    await outputStream.WriteAsync(decryptedPrevious, 0, decryptedPrevious.Length);
+                }
+
+                // 4. Текущий блок становится предыдущим для следующей итерации.
+                // Мы не создаем новую память, а просто копируем данные и количество байт.
+                Array.Copy(buffer, previousChunk, bytesRead);
+                previousBytesRead = bytesRead;
+            }
         }
+
+        // эта хуйня вроде не  используется
+        // private async Task<byte[]> EncryptDataAsync(byte[] data)
+        // {
+        //     return await Task.Run(() =>
+        //     {
+        //         byte[] paddedData = ApplyPadding(data, _blockSize);
+        //         return EncryptData(paddedData);
+        //     });
+        // }
+
+        // private async Task<byte[]> DecryptDataAsync(byte[] data)
+        // {
+        //     return await Task.Run(() =>
+        //     {
+        //         byte[] decryptedData = DecryptData(data);
+        //         return RemovePadding(decryptedData);
+        //     });
+        // }
 
         private byte[] EncryptData(byte[] data)
         {
@@ -204,20 +329,25 @@ namespace CryptoLib.Modes
             int blockSize = _blockSize;
             byte[] result = new byte[data.Length];
             
-            Parallel.For(0, data.Length / blockSize, i =>
-            {
-                int offset = i * blockSize;
-                byte[] block = new byte[blockSize];
-                Array.Copy(data, offset, block, 0, blockSize);
-                
-                byte[] encryptedBlock;
-                lock (_algorithmLock)
+            Parallel.For(0, data.Length / blockSize,
+                // Создаем один буфер для каждого потока
+                () => new byte[blockSize],
+                (i, loopState, block) =>
                 {
-                    encryptedBlock = _algorithm.EncryptBlock(block);
-                }
-                Array.Copy(encryptedBlock, 0, result, offset, blockSize);
-            });
-            
+                    int offset = i * blockSize;
+                    // Копируем в локальный буфер потока, не создавая новый массив
+                    Array.Copy(data, offset, block, 0, blockSize);
+                    
+                    byte[] encryptedBlock;
+                    lock (_algorithmLock)
+                    {
+                        encryptedBlock = _algorithm.EncryptBlock(block);
+                    }
+                    Array.Copy(encryptedBlock, 0, result, offset, blockSize);
+                    return block; // Передаем буфер на следующую итерацию этого же потока
+                },
+                _ => { }); // Финальный шаг, ничего не делаем
+
             return result;
         }
 
@@ -226,47 +356,26 @@ namespace CryptoLib.Modes
             int blockSize = _blockSize;
             byte[] result = new byte[data.Length];
             
-            Parallel.For(0, data.Length / blockSize, i =>
-            {
-                int offset = i * blockSize;
-                byte[] block = new byte[blockSize];
-                Array.Copy(data, offset, block, 0, blockSize);
-                
-                byte[] decryptedBlock;
-                lock (_algorithmLock)
+            Parallel.For(0, data.Length / blockSize,
+                () => new byte[blockSize],
+                (i, loopState, block) =>
                 {
-                    decryptedBlock = _algorithm.DecryptBlock(block);
-                }
-                Array.Copy(decryptedBlock, 0, result, offset, blockSize);
-            });
-            
+                    int offset = i * blockSize;
+                    Array.Copy(data, offset, block, 0, blockSize);
+                    
+                    byte[] decryptedBlock;
+                    lock (_algorithmLock)
+                    {
+                        decryptedBlock = _algorithm.DecryptBlock(block);
+                    }
+                    Array.Copy(decryptedBlock, 0, result, offset, blockSize);
+                    return block;
+                },
+                _ => { });
+
             return result;
         }
 
-        private byte[] EncryptCBC(byte[] data)
-        {
-            int blockSize = _blockSize;
-            byte[] result = new byte[data.Length];
-            byte[] previousBlock = (byte[])_initializationVector.Clone();
-            
-            for (int i = 0; i < data.Length / blockSize; i++)
-            {
-                int offset = i * blockSize;
-                byte[] block = new byte[blockSize];
-                Array.Copy(data, offset, block, 0, blockSize);
-                
-                for (int j = 0; j < blockSize; j++)
-                {
-                    block[j] ^= previousBlock[j];
-                }
-                
-                byte[] encryptedBlock = _algorithm.EncryptBlock(block);
-                Array.Copy(encryptedBlock, 0, result, offset, blockSize);
-                previousBlock = encryptedBlock;
-            }
-            
-            return result;
-        }
 
         // private byte[] DecryptCBC(byte[] data)
         // {
@@ -311,65 +420,112 @@ namespace CryptoLib.Modes
 
         //     return result;
         // }
-        
-        private byte[] DecryptCBC(byte[] data)
-        {
+
+        private byte[] EncryptCBC(byte[] data)
+        {            
             int blockSize = _blockSize;
             byte[] result = new byte[data.Length];
-            byte[] previousCipherBlock = (byte[])_initializationVector.Clone();
+            byte[] previousBlock = _feedbackRegister; 
+            
+            // Создаем рабочий буфер ОДИН РАЗ
+            byte[] block = new byte[blockSize];
 
             for (int i = 0; i < data.Length / blockSize; i++)
             {
                 int offset = i * blockSize;
-                byte[] encryptedBlock = new byte[blockSize];
+                // Переиспользуем рабочий буфер
+                Array.Copy(data, offset, block, 0, blockSize);
+
+                for (int j = 0; j < blockSize; j++)
+                {
+                    block[j] ^= previousBlock[j];
+                }
+
+                byte[] encryptedBlock = _algorithm.EncryptBlock(block);
+                Array.Copy(encryptedBlock, 0, result, offset, blockSize);
+                
+                // Обновляем состояние для следующего блока.
+                // encryptedBlock - это новый массив, возвращенный из EncryptBlock,
+                // поэтому здесь простое присваивание безопасно.
+                previousBlock = encryptedBlock;
+            }
+            
+            _feedbackRegister = previousBlock; 
+            return result;
+        }
+
+        private byte[] DecryptCBC(byte[] data)
+        {
+            int blockSize = _blockSize;
+            byte[] result = new byte[data.Length];
+            byte[] previousBlock = _feedbackRegister; 
+
+            // Создаем рабочий буфер ОДИН РАЗ
+            byte[] encryptedBlock = new byte[blockSize];
+
+            for (int i = 0; i < data.Length / blockSize; i++)
+            {
+                int offset = i * blockSize;
+                // Переиспользуем рабочий буфер
                 Array.Copy(data, offset, encryptedBlock, 0, blockSize);
 
                 byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
 
                 for (int j = 0; j < blockSize; j++)
                 {
-                    decryptedBlock[j] ^= previousCipherBlock[j];
+                    decryptedBlock[j] ^= previousBlock[j];
                 }
 
                 Array.Copy(decryptedBlock, 0, result, offset, blockSize);
-                previousCipherBlock = encryptedBlock;
+                
+                // ПРАВИЛЬНОЕ ОБНОВЛЕНИЕ СОСТОЯНИЯ
+                // Мы должны сохранить копию текущего шифроблока,
+                // прежде чем буфер encryptedBlock будет перезаписан на следующей итерации.
+                previousBlock = (byte[])encryptedBlock.Clone();
             }
-            
+            _feedbackRegister = previousBlock; 
+
             return result;
         }
 
 
 
         private byte[] EncryptPCBC(byte[] data)
-{
-    int blockSize = _blockSize;
-    byte[] result = new byte[data.Length];
-    byte[] previousPlaintext = (byte[])_initializationVector.Clone();
-    byte[] previousCiphertext = (byte[])_initializationVector.Clone();
-
-    for (int i = 0; i < data.Length / blockSize; i++)
-    {
-        int offset = i * blockSize;
-        byte[] originalBlock = new byte[blockSize]; // 1. Сохраняем оригинальный блок
-        Array.Copy(data, offset, originalBlock, 0, blockSize);
-
-        byte[] blockToEncrypt = (byte[])originalBlock.Clone(); // Копируем для модификации
-
-        for (int j = 0; j < blockSize; j++)
         {
-            blockToEncrypt[j] ^= (byte)(previousPlaintext[j] ^ previousCiphertext[j]);
+            int blockSize = _blockSize;
+            byte[] result = new byte[data.Length];
+            var (previousInput, previousOutput) = _pcbcFeedbackRegisters;
+
+            // Создаем буферы ОДИН РАЗ перед циклом
+            byte[] originalBlock = new byte[blockSize];
+            byte[] blockToEncrypt = new byte[blockSize];
+
+            for (int i = 0; i < data.Length / blockSize; i++)
+            {
+                int offset = i * blockSize;
+                // Переиспользуем буферы, не создавая новые
+                Array.Copy(data, offset, originalBlock, 0, blockSize);
+                Array.Copy(originalBlock, 0, blockToEncrypt, 0, blockSize);
+
+                for (int j = 0; j < blockSize; j++)
+                {
+                    blockToEncrypt[j] ^= (byte)(previousInput[j] ^ previousOutput[j]);
+                }
+                
+                byte[] encryptedBlock;
+                lock(_algorithmLock)
+                {
+                    encryptedBlock = _algorithm.EncryptBlock(blockToEncrypt);
+                }
+                Array.Copy(encryptedBlock, 0, result, offset, blockSize);
+
+                previousInput = (byte[])originalBlock.Clone();
+                previousOutput = (byte[])encryptedBlock.Clone();
+            }
+            
+            _pcbcFeedbackRegisters = (previousInput, previousOutput);
+            return result;
         }
-
-        byte[] encryptedBlock = _algorithm.EncryptBlock(blockToEncrypt);
-        Array.Copy(encryptedBlock, 0, result, offset, blockSize);
-
-        // 2. Обновляем переменные состояния правильными значениями
-        previousPlaintext = (byte[])originalBlock.Clone();
-        previousCiphertext = (byte[])encryptedBlock.Clone();
-    }
-
-    return result;
-}
 
         // private byte[] DecryptPCBC(byte[] data)
         // {
@@ -401,64 +557,72 @@ namespace CryptoLib.Modes
         // }
 
         private byte[] DecryptPCBC(byte[] data)
-{
-    int blockSize = _blockSize;
-    byte[] result = new byte[data.Length];
-    byte[] previousInput = (byte[])_initializationVector.Clone();
-    byte[] previousOutput = (byte[])_initializationVector.Clone();
-
-    for (int i = 0; i < data.Length / blockSize; i++)
-    {
-        int offset = i * blockSize;
-        byte[] encryptedBlock = new byte[blockSize];
-        Array.Copy(data, offset, encryptedBlock, 0, blockSize);
-
-        byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
-
-        // XOR с комбинацией previousInput и previousOutput
-        for (int j = 0; j < blockSize; j++)
         {
-            decryptedBlock[j] ^= (byte)(previousInput[j] ^ previousOutput[j]);
+            int blockSize = _blockSize;
+            byte[] result = new byte[data.Length];
+            var (previousInput, previousOutput) = _pcbcFeedbackRegisters;
+
+            // Создаем буфер ОДИН РАЗ перед циклом
+            byte[] encryptedBlock = new byte[blockSize];
+
+            for (int i = 0; i < data.Length / blockSize; i++)
+            {
+                int offset = i * blockSize;
+                // Переиспользуем буфер
+                Array.Copy(data, offset, encryptedBlock, 0, blockSize);
+                
+                byte[] decryptedBlock;
+                lock(_algorithmLock)
+                {
+                    decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
+                }
+
+                for (int j = 0; j < blockSize; j++)
+                {
+                    decryptedBlock[j] ^= (byte)(previousInput[j] ^ previousOutput[j]);
+                }
+
+                Array.Copy(decryptedBlock, 0, result, offset, blockSize);
+                
+                previousInput = (byte[])decryptedBlock.Clone();
+                previousOutput = (byte[])encryptedBlock.Clone();
+            }
+            
+            _pcbcFeedbackRegisters = (previousInput, previousOutput);
+            return result;
         }
-
-        Array.Copy(decryptedBlock, 0, result, offset, blockSize);
-
-        // Исправление: previousInput = исходный открытый текст
-        byte[] plainBlock = new byte[blockSize];
-        for (int j = 0; j < blockSize; j++)
-        {
-            plainBlock[j] = (byte)(encryptedBlock[j] ^ (byte)(previousInput[j] ^ previousOutput[j]));
-        }
-
-        previousInput = (byte[])decryptedBlock.Clone(); // Используем расшифрованный блок
-        previousOutput = (byte[])encryptedBlock.Clone();
-    }
-
-    return result;
-}
 
         private byte[] EncryptCFB(byte[] data)
         {
             int blockSize = _blockSize;
             byte[] result = new byte[data.Length];
-            byte[] feedback = (byte[])_initializationVector.Clone();
+            byte[] feedback = _feedbackRegister;
+
+            // Создаем буфер ОДИН РАЗ перед циклом
+            byte[] block = new byte[blockSize];
 
             for (int i = 0; i < data.Length / blockSize; i++)
             {
                 int offset = i * blockSize;
-                byte[] block = new byte[blockSize];
+                
+                byte[] encryptedFeedback;
+                lock(_algorithmLock)
+                {
+                    encryptedFeedback = _algorithm.EncryptBlock(feedback);
+                }
+
+                // Переиспользуем буфер
                 Array.Copy(data, offset, block, 0, blockSize);
-
-                byte[] encryptedFeedback = _algorithm.EncryptBlock(feedback);
-
+                
                 for (int j = 0; j < blockSize; j++)
                 {
                     result[offset + j] = (byte)(block[j] ^ encryptedFeedback[j]);
                 }
-
+                
                 Array.Copy(result, offset, feedback, 0, blockSize);
             }
-
+            
+            _feedbackRegister = feedback;
             return result;
         }
 
@@ -466,27 +630,35 @@ namespace CryptoLib.Modes
         {
             int blockSize = _blockSize;
             byte[] result = new byte[data.Length];
-            byte[] feedback = (byte[])_initializationVector.Clone();
+            byte[] feedback = _feedbackRegister;
+
+            // Создаем буфер ОДИН РАЗ перед циклом
+            byte[] encryptedBlock = new byte[blockSize];
 
             for (int i = 0; i < data.Length / blockSize; i++)
             {
                 int offset = i * blockSize;
-                byte[] encryptedBlock = new byte[blockSize];
+                
+                byte[] encryptedFeedback;
+                lock(_algorithmLock)
+                {
+                    encryptedFeedback = _algorithm.EncryptBlock(feedback);
+                }
+                
+                // Переиспользуем буфер
                 Array.Copy(data, offset, encryptedBlock, 0, blockSize);
-
-                byte[] encryptedFeedback = _algorithm.EncryptBlock(feedback);
 
                 for (int j = 0; j < blockSize; j++)
                 {
                     result[offset + j] = (byte)(encryptedBlock[j] ^ encryptedFeedback[j]);
                 }
-
+                
                 Array.Copy(encryptedBlock, 0, feedback, 0, blockSize);
             }
-
+            
+            _feedbackRegister = feedback;
             return result;
         }
-
         // private byte[] EncryptOFB(byte[] data)
         // {
         //     int blockSize = _blockSize;
@@ -535,17 +707,24 @@ namespace CryptoLib.Modes
         {
             int blockSize = _blockSize;
             byte[] result = new byte[data.Length];
-            byte[] feedback = (byte[])_initializationVector.Clone();
+            byte[] feedback = _feedbackRegister;
+
+            // Создаем буфер ОДИН РАЗ перед циклом
+            byte[] block = new byte[blockSize];
 
             for (int i = 0; i < data.Length / blockSize; i++)
             {
                 int offset = i * blockSize;
-                byte[] keystream = _algorithm.EncryptBlock(feedback);
                 
-                // Для OFB обратная связь не зависит от данных
+                byte[] keystream;
+                lock (_algorithmLock)
+                {
+                    keystream = _algorithm.EncryptBlock(feedback);
+                }
+                
                 feedback = keystream;
 
-                byte[] block = new byte[blockSize];
+                // Переиспользуем буфер
                 Array.Copy(data, offset, block, 0, blockSize);
                 for (int j = 0; j < blockSize; j++)
                 {
@@ -553,6 +732,7 @@ namespace CryptoLib.Modes
                 }
             }
             
+            _feedbackRegister = feedback;
             return result;
         }
 
@@ -646,30 +826,31 @@ namespace CryptoLib.Modes
        private byte[] EncryptRandomDelta(byte[] data)
         {
             int blockSize = _blockSize;
-            int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
             
-            Parallel.For(0, blockCount, i =>
-            {
-                // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId}: RD  блок {i}");
-                byte[] delta = ComputeDeltaForBlock(_initializationVector, i);
-                
-                byte[] block = new byte[blockSize];
-                Array.Copy(data, i * blockSize, block, 0, blockSize);
-                
-                for (int j = 0; j < blockSize; j++)
+            Parallel.For(0, data.Length / blockSize,
+                () => new byte[blockSize],
+                (i, loopState, block) =>
                 {
-                    block[j] ^= delta[j];
-                }
+                    byte[] delta = ComputeDeltaForBlock(_initializationVector, i);
+                    int offset = i * blockSize;
+                    Array.Copy(data, offset, block, 0, blockSize);
+                    
+                    for (int j = 0; j < blockSize; j++)
+                    {
+                        block[j] ^= delta[j];
+                    }
+                    
+                    byte[] encryptedBlock;
+                    lock (_algorithmLock)
+                    {
+                        encryptedBlock = _algorithm.EncryptBlock(block);
+                    }
+                    Array.Copy(encryptedBlock, 0, result, offset, blockSize);
+                    return block;
+                },
+                _ => { });
                 
-                byte[] encryptedBlock;
-                lock (_algorithmLock)
-                {
-                    encryptedBlock = _algorithm.EncryptBlock(block);
-                }
-                Array.Copy(encryptedBlock, 0, result, i * blockSize, blockSize);
-            });
-            
             return result;
         }
 
@@ -685,31 +866,30 @@ namespace CryptoLib.Modes
         private byte[] DecryptRandomDelta(byte[] data)
         {
             int blockSize = _blockSize;
-            int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
-            
-            Parallel.For(0, blockCount, i =>
-            {
 
-                // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId}: RD  блок {i}");
-                byte[] delta = ComputeDeltaForBlock(_initializationVector, i);
-                
-                byte[] encryptedBlock = new byte[blockSize];
-                Array.Copy(data, i * blockSize, encryptedBlock, 0, blockSize);
-                
-                byte[] decryptedBlock;
-                lock (_algorithmLock)
+            Parallel.For(0, data.Length / blockSize,
+                () => new byte[blockSize],
+                (i, loopState, encryptedBlock) =>
                 {
-                    decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
-                }
-                
-                // XOR с delta
-                for (int j = 0; j < blockSize; j++)
-                {
-                    result[i * blockSize + j] = (byte)(decryptedBlock[j] ^ delta[j]);
-                }
-            });
-            
+                    byte[] delta = ComputeDeltaForBlock(_initializationVector, i);
+                    int offset = i * blockSize;
+                    Array.Copy(data, offset, encryptedBlock, 0, blockSize);
+                    
+                    byte[] decryptedBlock;
+                    lock (_algorithmLock)
+                    {
+                        decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
+                    }
+                    
+                    for (int j = 0; j < blockSize; j++)
+                    {
+                        result[offset + j] = (byte)(decryptedBlock[j] ^ delta[j]);
+                    }
+                    return encryptedBlock;
+                },
+                _ => { });
+
             return result;
         }
         private void IncrementCounter(byte[] counter)

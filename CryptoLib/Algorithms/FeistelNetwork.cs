@@ -3,23 +3,21 @@ using CryptoLib.Interfaces;
 
 namespace CryptoLib.Algorithms
 {
-    /// <summary>
-    /// Реализация сети Фейстеля для симметричных алгоритмов шифрования
-    /// </summary>
     public class FeistelNetwork : ISymmetricCipher
     {
         private readonly IKeyScheduler _keyScheduler;
         private readonly IFeistelFunction _feistelFunction;
         private readonly int _rounds;
-        private byte[][] _roundKeys;
+        private byte[][] _roundKeys = default!;
         private bool _keysSet = false;
 
-        /// <summary>
-        /// Инициализирует новую сеть Фейстеля
-        /// </summary>
-        /// <param name="keyScheduler">Реализация интерфейса расширения ключа (п.2.1)</param>
-        /// <param name="feistelFunction">Реализация интерфейса шифрующего преобразования (п.2.2)</param>
-        /// <param name="rounds">Количество раундов</param>
+        // === БУФЕРЫ, ВЫНЕСЕННЫЕ В ПОЛЯ КЛАССА ===
+        private readonly byte[] _left;
+        private readonly byte[] _right;
+        private readonly byte[] _temp; // Для безопасного обмена L и R
+        private readonly byte[] _finalResult;
+        private readonly int _halfSize;
+
         public FeistelNetwork(
             IKeyScheduler keyScheduler,
             IFeistelFunction feistelFunction,
@@ -28,16 +26,19 @@ namespace CryptoLib.Algorithms
             _keyScheduler = keyScheduler ?? throw new ArgumentNullException(nameof(keyScheduler));
             _feistelFunction = feistelFunction ?? throw new ArgumentNullException(nameof(feistelFunction));
             _rounds = rounds > 0 ? rounds : throw new ArgumentException("Количество раундов должно быть положительным", nameof(rounds));
+        
+            // === ИНИЦИАЛИЗАЦИЯ БУФЕРОВ ОДИН РАЗ В КОНСТРУКТОРЕ ===
+            _halfSize = this.BlockSize / 2;
+            _left = new byte[_halfSize];
+            _right = new byte[_halfSize];
+            _temp = new byte[_halfSize];
+            _finalResult = new byte[this.BlockSize];
         }
 
-        public int BlockSize => 8; // 64 бита для Feistel сети (может быть переопределено)
+        // Остальные свойства и SetRoundKeys остаются без изменений
+        public int BlockSize => 8;
+        public int KeySize => 8;
 
-        public int KeySize => 8;   // 64 бита (может быть переопределено)
-
-        /// <summary>
-        /// Устанавливает раундовые ключи для алгоритма
-        /// </summary>
-        /// <param name="key">Ключ шифрования/дешифрования</param>
         public void SetRoundKeys(byte[] key)
         {
             if (key == null) throw new ArgumentNullException(nameof(key));
@@ -48,102 +49,78 @@ namespace CryptoLib.Algorithms
             _keysSet = true;
         }
 
-        /// <summary>
-        /// Шифрует блок данных с использованием сети Фейстеля
-        /// </summary>
-        /// <param name="block">Блок данных для шифрования</param>
-        /// <returns>Зашифрованный блок данных</returns>
         public byte[] EncryptBlock(byte[] block)
         {
             if (!_keysSet)
-                throw new InvalidOperationException("Раундовые ключи не установлены. Вызовите SetRoundKeys сначала.");
-            if (block == null) throw new ArgumentNullException(nameof(block));
-            if (block.Length != BlockSize)
+                throw new InvalidOperationException("Раундовые ключи не установлены.");
+            if (block == null || block.Length != BlockSize)
                 throw new ArgumentException($"Размер блока должен быть {BlockSize} байт");
 
-            // Разделяем блок на две половины
-            int halfSize = BlockSize / 2;
-            byte[] left = new byte[halfSize];
-            byte[] right = new byte[halfSize];
-            Array.Copy(block, 0, left, 0, halfSize);
-            Array.Copy(block, halfSize, right, 0, halfSize);
+            // Используем поля-буферы, НЕ создавая новую память
+            Array.Copy(block, 0, _left, 0, _halfSize);
+            Array.Copy(block, _halfSize, _right, 0, _halfSize);
 
-            // Выполняем раунды Фейстеля
             for (int round = 0; round < _rounds; round++)
             {
-                byte[] temp = right;
+                // Сохраняем левую часть во временный буфер
+                Array.Copy(_left, 0, _temp, 0, _halfSize);
+
+                // Новая левая часть = старая правая часть
+                Array.Copy(_right, 0, _left, 0, _halfSize);
+
+                // Вычисляем результат F-функции
+                byte[] feistelResult = _feistelFunction.Execute(_right, _roundKeys[round]);
                 
-                // Применяем Feistel функцию к правой половине с текущим раундовым ключом
-                byte[] feistelResult = _feistelFunction.Execute(right, _roundKeys[round]);
-                
-                // XOR левой половины с результатом Feistel функции
-                right = XorBlocks(left, feistelResult);
-                left = temp;
+                // Новая правая часть = старая левая (из temp) XOR результат F-функции
+                XorBlocks(_temp, feistelResult, _right); // Пишем результат в _right
             }
+            
+            // Объединяем половины в финальный буфер
+            Array.Copy(_left, 0, _finalResult, 0, _halfSize);
+            Array.Copy(_right, 0, _finalResult, _halfSize, _halfSize);
 
-            // Объединяем половины (после последнего раунда не меняем местами)
-            byte[] result = new byte[BlockSize];
-            Array.Copy(left, 0, result, 0, halfSize);
-            Array.Copy(right, 0, result, halfSize, halfSize);
-
-            return result;
+            return (byte[])_finalResult.Clone();
         }
 
-        /// <summary>
-        /// Дешифрует блок данных с использованием сети Фейстеля
-        /// </summary>
-        /// <param name="block">Блок данных для дешифрования</param>
-        /// <returns>Расшифрованный блок данных</returns>
         public byte[] DecryptBlock(byte[] block)
         {
             if (!_keysSet)
-                throw new InvalidOperationException("Раундовые ключи не установлены. Вызовите SetRoundKeys сначала.");
-            if (block == null) throw new ArgumentNullException(nameof(block));
-            if (block.Length != BlockSize)
+                throw new InvalidOperationException("Раундовые ключи не установлены.");
+            if (block == null || block.Length != BlockSize)
                 throw new ArgumentException($"Размер блока должен быть {BlockSize} байт");
 
-            // Разделяем блок на две половины
-            int halfSize = BlockSize / 2;
-            byte[] left = new byte[halfSize];
-            byte[] right = new byte[halfSize];
-            Array.Copy(block, 0, left, 0, halfSize);
-            Array.Copy(block, halfSize, right, 0, halfSize);
+            // Используем поля-буферы
+            Array.Copy(block, 0, _left, 0, _halfSize);
+            Array.Copy(block, _halfSize, _right, 0, _halfSize);
 
-            // Выполняем раунды Фейстеля в обратном порядке
             for (int round = _rounds - 1; round >= 0; round--)
             {
-                byte[] temp = left;
+                // Сохраняем правую часть во временный буфер
+                Array.Copy(_right, 0, _temp, 0, _halfSize);
+
+                // Новая правая часть = старая левая часть
+                Array.Copy(_left, 0, _right, 0, _halfSize);
                 
-                // Применяем Feistel функцию к левой половине с текущим раундовым ключом
-                byte[] feistelResult = _feistelFunction.Execute(left, _roundKeys[round]);
-                
-                // XOR правой половины с результатом Feistel функции
-                left = XorBlocks(right, feistelResult);
-                right = temp;
+                // Вычисляем результат F-функции
+                byte[] feistelResult = _feistelFunction.Execute(_left, _roundKeys[round]);
+
+                // Новая левая часть = старая правая (из temp) XOR результат F-функции
+                XorBlocks(_temp, feistelResult, _left); // Пишем результат в _left
             }
 
-            // Объединяем половины
-            byte[] result = new byte[BlockSize];
-            Array.Copy(left, 0, result, 0, halfSize);
-            Array.Copy(right, 0, result, halfSize, halfSize);
+            Array.Copy(_left, 0, _finalResult, 0, _halfSize);
+            Array.Copy(_right, 0, _finalResult, _halfSize, _halfSize);
 
-            return result;
+            return (byte[])_finalResult.Clone();
         }
 
-        /// <summary>
-        /// Выполняет операцию XOR между двумя блоками данных
-        /// </summary>
-        private byte[] XorBlocks(byte[] block1, byte[] block2)
+        // ПЕРЕПИСАННЫЙ МЕТОД: не возвращает новый массив, а записывает результат в существующий
+        private void XorBlocks(byte[] block1, byte[] block2, byte[] result)
         {
-            if (block1.Length != block2.Length)
-                throw new ArgumentException("Блоки должны быть одинакового размера");
-
-            byte[] result = new byte[block1.Length];
             for (int i = 0; i < block1.Length; i++)
             {
                 result[i] = (byte)(block1[i] ^ block2[i]);
             }
-            return result;
         }
     }
 }

@@ -48,5 +48,6 @@ CryptoLab_DES/
 
 
 TO-DO:
-- почему я zeroIndex в BitPermutations всегда false кидаю, в чем смысл параметра
-- 
+- почему так долго AdvancedTests
+- для DEAL наверное тоже стоит добавить AdvancedTests
+- не сломал ли я демку
