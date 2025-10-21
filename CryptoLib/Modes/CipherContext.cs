@@ -758,33 +758,49 @@ namespace CryptoLib.Modes
         //     return result;
         // }
         
-       private byte[] EncryptCTR(byte[] data)
+        private byte[] EncryptCTR(byte[] data)
         {
             int blockSize = _blockSize;
             int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
 
-            Parallel.For(0, blockCount, i =>
-            {
-                byte[] blockCounter = (byte[])_initializationVector.Clone();
-
-                long counterValue = BitConverter.ToInt64(blockCounter, blockCounter.Length - 8);
-                counterValue += (long)i;
-                byte[] incrementedBytes = BitConverter.GetBytes(counterValue);
-                Array.Copy(incrementedBytes, 0, blockCounter, blockCounter.Length - 8, 8);
-
-                // Блокировка убрана
-                byte[] keystream = _algorithm.EncryptBlock(blockCounter);
-
-                int offset = i * blockSize;
-                for (int j = 0; j < blockSize; j++)
+            Parallel.For(0, blockCount,
+                // localInit: Создаем пару буферов ОДИН РАЗ для КАЖДОГО потока.
+                // Item1: буфер для blockCounter. Item2: буфер для байтов инкремента.
+                () => (new byte[blockSize], new byte[8]),
+                
+                // body: Основная логика, использующая thread-local буферы.
+                (i, loopState, localBuffers) =>
                 {
-                    if (offset + j < data.Length)
+                    var (blockCounter, incrementedBytes) = localBuffers;
+
+                    // Копируем исходный IV в наш локальный буфер, НЕ создавая новый массив.
+                    Array.Copy(_initializationVector, blockCounter, blockSize);
+
+                    long counterValue = BitConverter.ToInt64(blockCounter, blockCounter.Length - 8);
+                    counterValue += (long)i;
+
+                    // Используем второй буфер, НЕ создавая новый массив.
+                    BitConverter.TryWriteBytes(incrementedBytes, counterValue);
+                    Array.Copy(incrementedBytes, 0, blockCounter, blockCounter.Length - 8, 8);
+
+                    byte[] keystream = _algorithm.EncryptBlock(blockCounter);
+
+                    int offset = i * blockSize;
+                    for (int j = 0; j < blockSize; j++)
                     {
-                        result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
+                        if (offset + j < data.Length)
+                        {
+                            result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
+                        }
                     }
-                }
-            });
+                    
+                    // Возвращаем буферы для следующей итерации этого же потока.
+                    return localBuffers;
+                },
+                
+                // localFinally: Ничего не делаем при завершении потока.
+                _ => { });
 
             return result;
         }

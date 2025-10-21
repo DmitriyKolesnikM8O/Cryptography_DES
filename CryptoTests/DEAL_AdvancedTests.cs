@@ -6,27 +6,40 @@ using System.Threading.Tasks;
 using CryptoLib.Interfaces;
 using CryptoLib.Modes;
 using Xunit;
-using Xunit.Abstractions; // <--- ДОБАВЬТЕ ЭТОТ using
+using Xunit.Abstractions;
 
 namespace CryptoTests
 {
-    public class DES_AdvancedTests
+    public class DEAL_AdvancedTests
     {
-        private readonly byte[] _testKey = { 0x13, 0x34, 0x57, 0x79, 0x9B, 0xBC, 0xDF, 0xF1 };
-        private readonly byte[] _testIV = { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
+        // --- 1. ЗАМЕНА КЛЮЧЕЙ И ВЕКТОРОВ НА СООТВЕТСТВУЮЩИЕ DEAL ---
 
-        // --- ДОБАВЬТЕ ЭТИ ДВЕ ЧАСТИ ДЛЯ ВЫВОДА ДИАГНОСТИКИ ---
+        // Ключ для DEAL-128 (16 байт)
+        private readonly byte[] _testKey128 = 
+        {
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+            0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
+        };
+
+        // Вектор инициализации для DEAL (16 байт, т.к. размер блока 128 бит)
+        private readonly byte[] _testIV128 = 
+        {
+            0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF,
+            0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10
+        };
+
+        // ----------------------------------------------------------------
+
         private readonly ITestOutputHelper _testOutputHelper;
 
-        public DES_AdvancedTests(ITestOutputHelper testOutputHelper)
+        public DEAL_AdvancedTests(ITestOutputHelper testOutputHelper)
         {
             _testOutputHelper = testOutputHelper;
         }
-        // ----------------------------------------------------
 
+        // Этот метод можно оставить без изменений, он универсален
         public static IEnumerable<object[]> TestDataGenerator()
         {
-            // Раскомментируйте все файлы, чтобы получить полные данные
             string[] filePaths = 
             {
                 "TestData/text.txt",
@@ -49,19 +62,28 @@ namespace CryptoTests
 
         [Theory]
         [MemberData(nameof(TestDataGenerator))]
-        public async Task ComprehensiveFileEncryptDecrypt_ShouldSucceed(string inputFilePath, CipherMode mode)
+        public async Task DEAL128_ComprehensiveFileEncryptDecrypt_ShouldSucceed(string inputFilePath, CipherMode mode)
         {
-            // --- НАЧАЛО ДИАГНОСТИКИ ---
             var diagnostics = new System.Text.StringBuilder();
-            diagnostics.AppendLine($"\n--- DIAGNOSTICS for {Path.GetFileName(inputFilePath)} [{new FileInfo(inputFilePath).Length / 1024.0:F2} KB] with {mode} ---");
+            diagnostics.AppendLine($"\n--- DIAGNOSTICS for {Path.GetFileName(inputFilePath)} [{new FileInfo(inputFilePath).Length / 1024.0:F2} KB] with DEAL-128, {mode} ---");
             var totalStopwatch = System.Diagnostics.Stopwatch.StartNew();
-            // --- КОНЕЦ ДИАГНОСТИКИ ---
 
             // Arrange
             Assert.True(File.Exists(inputFilePath), $"Тестовый файл не найден: {inputFilePath}");
 
-            byte[] iv = mode == CipherMode.ECB ? null : _testIV;
-            var context = new CipherContext(_testKey, mode, PaddingMode.PKCS7, iv);
+            // Используем 16-байтный IV для DEAL
+            byte[]? iv = mode == CipherMode.ECB ? null : _testIV128;
+            
+            // --- 2. КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: ЯВНО УКАЗЫВАЕМ АЛГОРИТМ DEAL ---
+            var context = new CipherContext(
+                _testKey128, 
+                mode, 
+                PaddingMode.PKCS7, 
+                iv,
+                // Этот параметр говорит CipherContext использовать DEAL, а не авто-определять по ключу
+                new KeyValuePair<string, object>("Algorithm", "DEAL")
+            );
+            // -------------------------------------------------------------
 
             string encryptedFile = Path.GetTempFileName();
             string decryptedFile = Path.GetTempFileName();
@@ -95,7 +117,6 @@ namespace CryptoTests
                 totalStopwatch.Stop();
                 diagnostics.AppendLine($"  Total test time: {totalStopwatch.ElapsedMilliseconds,7} ms");
                 
-                // Выводим всю собранную информацию в лог теста
                 _testOutputHelper.WriteLine(diagnostics.ToString());
             }
         }

@@ -48,7 +48,5 @@ CryptoLab_DES/
 
 
 TO-DO:
-- почему так долго AdvancedTests
-- для DEAL наверное тоже стоит добавить AdvancedTests
 - не сломал ли я демку
-- в DEAL для AdvancedTests тоже много че менять нужно будет наверное
+- что тут происходит
