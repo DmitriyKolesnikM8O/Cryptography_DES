@@ -72,18 +72,18 @@ namespace CryptoLib.Core
 
         private static bool GetBitLSB(byte[] data, int bitIndex)
         {
-            return (data[bitIndex / 8] & (1 << (bitIndex % 8))) != 0;
+            return (data[bitIndex >> 3] & (1 << (bitIndex & 7))) != 0;
         }
 
         private static bool GetBitMSB(byte[] data, int bitIndex)
         {
-            return (data[bitIndex / 8] & (1 << (7 - (bitIndex % 8)))) != 0;
+            return (data[bitIndex >> 3] & (1 << (7 - (bitIndex & 7)))) != 0;
         }
 
         private static void SetBitLSB(byte[] data, int bitIndex, bool value)
         {
-            int byteIndex = bitIndex / 8;
-            int bitInByte = bitIndex % 8;
+            int byteIndex = bitIndex >> 3;
+            int bitInByte = bitIndex & 7;
             if (value)
                 data[byteIndex] |= (byte)(1 << bitInByte);
             else
@@ -92,8 +92,8 @@ namespace CryptoLib.Core
 
         private static void SetBitMSB(byte[] data, int bitIndex, bool value)
         {
-            int byteIndex = bitIndex / 8;
-            int bitInByte = 7 - (bitIndex % 8);
+            int byteIndex = bitIndex >> 3;
+            int bitInByte = 7 - (bitIndex & 7);
             if (value)
                 data[byteIndex] |= (byte)(1 << bitInByte);
             else

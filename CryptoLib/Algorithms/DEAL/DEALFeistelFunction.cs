@@ -5,23 +5,24 @@ namespace CryptoLib.Algorithms.DEAL
 {
     public class DEALFeistelFunction : IFeistelFunction
     {
-        private readonly DESAdapter _desAdapter;
-
+        // Конструктор теперь пуст. Мы не храним общее состояние.
         public DEALFeistelFunction()
         {
-            _desAdapter = new DESAdapter();
         }
 
         /// <summary>
-        /// Выполняет раундовую функцию F для DEAL
+        /// Выполняет раундовую функцию F для DEAL.
+        /// Этот метод теперь полностью потокобезопасен.
         /// </summary>
-        /// <param name="inputBlock">Входной блок (64 бита - правая половина)</param>
-        /// <param name="roundKey">Раундовый ключ (64 бита)</param>
-        /// <returns>Результат раундовой функции (64 бита)</returns>
         public byte[] Execute(byte[] inputBlock, byte[] roundKey)
         {
+            // Создаем новый, "чистый" адаптер для каждого вызова.
+            // Это предотвращает состояние гонки, когда несколько потоков
+            // вызывают этот метод одновременно.
+            var localDesAdapter = new DESAdapter();
+            
             // В DEAL раундовая функция F - это просто DES шифрование
-            return _desAdapter.Execute(inputBlock, roundKey);
+            return localDesAdapter.Execute(inputBlock, roundKey);
         }
     }
 }
