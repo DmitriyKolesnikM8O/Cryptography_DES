@@ -48,235 +48,260 @@ namespace CryptoDemo
             }
         }
         
+        // DemonstrateDES и DemonstrateDEAL остаются БЕЗ ИЗМЕНЕНИЙ, они корректны.
         static async Task DemonstrateDES()
         {
             Console.WriteLine("\n=== Демонстрация DES ===");
-            
-            byte[] key = new byte[8] { 0x13, 0x34, 0x57, 0x79, 0x9B, 0xBC, 0xDF, 0xF1 };
-            byte[] iv = new byte[8] { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
-            byte[] testData = new byte[16] { 
+            byte[] key = { 0x13, 0x34, 0x57, 0x79, 0x9B, 0xBC, 0xDF, 0xF1 };
+            byte[] iv = { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
+            byte[] testData = { 
                 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF,
                 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10 
             };
-            
             Console.WriteLine("Ключ: " + BitConverter.ToString(key));
             Console.WriteLine("Данные: " + BitConverter.ToString(testData));
-            
-            // Тестируем все режимы
-            var modes = new[] { 
-                CipherMode.ECB, CipherMode.CBC, CipherMode.PCBC, 
-                CipherMode.CFB, CipherMode.OFB, CipherMode.CTR 
-            };
-            
+            var modes = new[] { CipherMode.ECB, CipherMode.CBC, CipherMode.PCBC, CipherMode.CFB, CipherMode.OFB, CipherMode.CTR };
             foreach (var mode in modes)
             {
                 Console.WriteLine($"\n--- Режим {mode} ---");
-                
                 try
                 {
-                    byte[] ivForMode = mode == CipherMode.ECB ? null : iv;
-                    var context = new CipherContext(key, mode, PaddingMode.PKCS7, ivForMode,
-                        new System.Collections.Generic.KeyValuePair<string, object>("Algorithm", "DES"));
-                    
+                    byte[]? ivForMode = mode == CipherMode.ECB ? null : iv;
+                    var context = new CipherContext(key, mode, PaddingMode.PKCS7, ivForMode, new KeyValuePair<string, object>("Algorithm", "DES"));
                     byte[] encrypted = new byte[32];
                     await context.EncryptAsync(testData, encrypted);
-                    
                     byte[] decrypted = new byte[32];
                     await context.DecryptAsync(encrypted, decrypted);
-                    
                     bool success = testData.SequenceEqual(decrypted.Take(testData.Length));
                     Console.WriteLine($"Результат: {(success ? "УСПЕХ" : "ОШИБКА")}");
                     Console.WriteLine($"Зашифровано: {BitConverter.ToString(encrypted.Take(16).ToArray())}");
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Ошибка: {ex.Message}");
-                }
+                catch (Exception ex) { Console.WriteLine($"Ошибка: {ex.Message}"); }
             }
         }
         
         static async Task DemonstrateDEAL()
+{
+    Console.WriteLine("\n=== Демонстрация DEAL ===");
+    byte[] key128 = { 
+        0x13, 0x34, 0x57, 0x79, 0x9B, 0xBC, 0xDF, 0xF1,
+        0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0
+    };
+    byte[] iv = { 
+        0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF,
+        0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10
+    };
+    byte[] testData = { 
+        0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF,
+        0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
+        // Добавляем второй блок
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+        0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00
+    };
+    Console.WriteLine("Ключ (128-bit): " + BitConverter.ToString(key128));
+    Console.WriteLine("Данные: " + BitConverter.ToString(testData));
+    var modes = new[] { CipherMode.ECB, CipherMode.CBC, CipherMode.PCBC, CipherMode.CFB, CipherMode.OFB, CipherMode.CTR };
+    foreach (var mode in modes)
+    {
+        Console.WriteLine($"\n--- DEAL-128 Режим {mode} ---");
+        try
         {
-            Console.WriteLine("\n=== Демонстрация DEAL ===");
+            byte[]? ivForMode = mode == CipherMode.ECB ? null : iv;
             
-            byte[] key128 = new byte[16] { 
-                0x13, 0x34, 0x57, 0x79, 0x9B, 0xBC, 0xDF, 0xF1,
-                0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0
-            };
+            // 1. Создаем контекст ТОЛЬКО для шифрования
+            var encryptContext = new CipherContext(key128, mode, PaddingMode.PKCS7, ivForMode, new KeyValuePair<string, object>("Algorithm", "DEAL"));
+            byte[] encrypted = new byte[48];
+            await encryptContext.EncryptAsync(testData, encrypted);
             
-            byte[] iv = new byte[16] { 
-                0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF,
-                0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10
-            };
+            // 2. Создаем НОВЫЙ, ОТДЕЛЬНЫЙ контекст для дешифрования с теми же параметрами
+            var decryptContext = new CipherContext(key128, mode, PaddingMode.PKCS7, ivForMode, new KeyValuePair<string, object>("Algorithm", "DEAL"));
+            byte[] decrypted = new byte[48];
+            await decryptContext.DecryptAsync(encrypted, decrypted); // Используем новый контекст
             
-            byte[] testData = new byte[16] { 
-                0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF,
-                0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10 
-            };
-            
-            Console.WriteLine("Ключ (128-bit): " + BitConverter.ToString(key128));
-            Console.WriteLine("Данные: " + BitConverter.ToString(testData));
-            
-            // Тестируем все режимы для DEAL-128
-            var modes = new[] { 
-                CipherMode.ECB, CipherMode.CBC, CipherMode.PCBC, 
-                CipherMode.CFB, CipherMode.OFB, CipherMode.CTR 
-            };
-            
-            foreach (var mode in modes)
-            {
-                Console.WriteLine($"\n--- DEAL-128 Режим {mode} ---");
-                
-                try
-                {
-                    byte[] ivForMode = mode == CipherMode.ECB ? null : iv;
-                    var context = new CipherContext(key128, mode, PaddingMode.PKCS7, ivForMode,
-                        new System.Collections.Generic.KeyValuePair<string, object>("Algorithm", "DEAL"));
-                    
-                    byte[] encrypted = new byte[32];
-                    await context.EncryptAsync(testData, encrypted);
-                    
-                    byte[] decrypted = new byte[32];
-                    await context.DecryptAsync(encrypted, decrypted);
-                    
-                    bool success = testData.SequenceEqual(decrypted.Take(testData.Length));
-                    Console.WriteLine($"Результат: {(success ? "УСПЕХ" : "ОШИБКА")}");
-                    Console.WriteLine($"Зашифровано: {BitConverter.ToString(encrypted.Take(16).ToArray())}");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Ошибка: {ex.Message}");
-                }
-            }
+            bool success = testData.SequenceEqual(decrypted.Take(testData.Length));
+            Console.WriteLine($"Результат: {(success ? "УСПЕХ" : "ОШИБКА")}");
+            Console.WriteLine($"Зашифровано: {BitConverter.ToString(encrypted.Take(32).ToArray())}"); // Показываем оба блока
         }
+        catch (Exception ex) { Console.WriteLine($"Ошибка: {ex.Message}"); }
+    }
+}
+        
         
         static async Task EncryptFile()
+{
+    Console.WriteLine("\n=== Шифрование файла ===");
+    try
+    {
+        Console.Write("Введите путь к исходному файлу: ");
+        string? inputFile = Console.ReadLine();
+        if (string.IsNullOrEmpty(inputFile) || !File.Exists(inputFile))
         {
-            Console.WriteLine("\n=== Шифрование файла ===");
+            Console.WriteLine("Ошибка: Исходный файл не существует!");
+            return;
+        }
+
+        Console.Write("Введите путь для зашифрованного файла: ");
+        string? outputFile = Console.ReadLine();
+        if (string.IsNullOrEmpty(outputFile))
+        {
+            Console.WriteLine("Ошибка: Не указан путь для зашифрованного файла.");
+            return;
+        }
+
+        (string algoName, byte[] key) = SelectAlgorithmAndGenerateKey();
+        (CipherMode mode, byte[]? iv) = SelectModeAndGenerateIV(algoName);
+
+        var padding = (mode == CipherMode.CFB || mode == CipherMode.OFB || mode == CipherMode.CTR) 
+            ? PaddingMode.Zeros : PaddingMode.PKCS7;
+
+        var context = new CipherContext(key, mode, padding, iv, new KeyValuePair<string, object>("Algorithm", algoName));
+        
+        Console.WriteLine("Начинаю шифрование...");
+
+        // --- НОВАЯ ЛОГИКА ЗАПИСИ ФАЙЛА ---
+        await using (var inputFileStream = new FileStream(inputFile, FileMode.Open, FileAccess.Read))
+        await using (var outputFileStream = new FileStream(outputFile, FileMode.Create, FileAccess.Write))
+        {
+            // 1. Если IV существует (т.е. режим не ECB), записываем его в начало файла.
+            if (iv != null)
+            {
+                await outputFileStream.WriteAsync(iv, 0, iv.Length);
+            }
+            // 2. Шифруем остальной поток данных и дописываем в тот же файл.
+            await context.EncryptAsync(inputFileStream, outputFileStream);
+        }
+        
+        Console.WriteLine($"\nФайл успешно зашифрован: {outputFile}");
+        Console.WriteLine("--- СОХРАНИТЕ ЭТИ ДАННЫЕ ДЛЯ ДЕШИФРОВАНИЯ ---");
+        Console.WriteLine($"Алгоритм: {algoName}");
+        Console.WriteLine($"Режим: {mode}");
+        Console.WriteLine($"Ключ (Hex): {BitConverter.ToString(key)}");
+        // Больше не показываем IV пользователю
+        Console.WriteLine("--------------------------------------------");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Ошибка при шифровании: {ex.Message}");
+    }
+}
+
+static async Task DecryptFile()
+{
+    Console.WriteLine("\n=== Дешифрование файла ===");
+    try
+    {
+        Console.Write("Введите путь к зашифрованному файлу: ");
+        string? inputFile = Console.ReadLine();
+        if (string.IsNullOrEmpty(inputFile) || !File.Exists(inputFile))
+        {
+            Console.WriteLine("Ошибка: Зашифрованный файл не существует!");
+            return;
+        }
+
+        Console.Write("Введите путь для расшифрованного файла: ");
+        string? outputFile = Console.ReadLine();
+         if (string.IsNullOrEmpty(outputFile))
+        {
+            Console.WriteLine("Ошибка: Не указан путь для расшифрованного файла.");
+            return;
+        }
+        
+        Console.Write("Введите алгоритм (DES/DEAL): ");
+        string? algorithm = Console.ReadLine()?.ToUpper(); // Приводим к верхнему регистру для надежности
+
+        Console.Write("Введите режим шифрования: ");
+        if (!Enum.TryParse<CipherMode>(Console.ReadLine(), true, out var mode))
+        {
+            Console.WriteLine("Ошибка: Неверный режим шифрования.");
+            return;
+        }
+
+        Console.Write("Введите ключ (Hex строка): ");
+        byte[] key = HexStringToByteArray(Console.ReadLine() ?? "");
+
+        // --- НОВАЯ ЛОГИКА ЧТЕНИЯ ФАЙЛА ---
+        byte[]? iv = null;
+        var padding = (mode == CipherMode.CFB || mode == CipherMode.OFB || mode == CipherMode.CTR) 
+            ? PaddingMode.Zeros : PaddingMode.PKCS7;
+
+        await using (var inputFileStream = new FileStream(inputFile, FileMode.Open, FileAccess.Read))
+        await using (var outputFileStream = new FileStream(outputFile, FileMode.Create, FileAccess.Write))
+        {
+            // 1. Если режим НЕ ECB, мы должны прочитать IV из начала файла.
+            if (mode != CipherMode.ECB)
+            {
+                // Определяем размер IV по алгоритму
+                int ivSize = (algorithm == "DES") ? 8 : 16;
+                iv = new byte[ivSize];
+                int bytesRead = await inputFileStream.ReadAsync(iv, 0, iv.Length);
+                if (bytesRead < iv.Length)
+                {
+                    throw new IOException("Не удалось прочитать полный IV из зашифрованного файла.");
+                }
+            }
             
-            Console.Write("Введите путь к исходному файлу: ");
-            string inputFile = Console.ReadLine();
+            // 2. Создаем контекст с прочитанным IV
+            var context = new CipherContext(key, mode, padding, iv, new KeyValuePair<string, object>("Algorithm", algorithm ?? "DES"));
             
-            Console.Write("Введите путь для зашифрованного файла: ");
-            string outputFile = Console.ReadLine();
-            
+            // 3. Расшифровываем оставшуюся часть потока.
+            Console.WriteLine("Начинаю дешифрование...");
+            await context.DecryptAsync(inputFileStream, outputFileStream);
+        }
+        
+        Console.WriteLine($"Файл успешно расшифрован: {outputFile}");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Ошибка при дешифровании: {ex.Message}");
+    }
+}
+
+        static (string, byte[]) SelectAlgorithmAndGenerateKey()
+        {
             Console.WriteLine("Выберите алгоритм:");
             Console.WriteLine("1. DES (64-bit ключ)");
             Console.WriteLine("2. DEAL-128 (128-bit ключ)");
             Console.WriteLine("3. DEAL-192 (192-bit ключ)");
             Console.WriteLine("4. DEAL-256 (256-bit ключ)");
-            string algoChoice = Console.ReadLine();
-            
-            Console.WriteLine("Выберите режим шифрования:");
-            var modes = Enum.GetValues(typeof(CipherMode)).Cast<CipherMode>();
-            int i = 1;
-            foreach (var mode in modes)
-            {
-                Console.WriteLine($"{i}. {mode}");
-                i++;
-            }
-            string modeChoice = Console.ReadLine();
-            
-            if (!File.Exists(inputFile))
-            {
-                Console.WriteLine("Исходный файл не существует!");
-                return;
-            }
-            
-            try
-            {
-                byte[] key = GenerateKey(algoChoice);
-                CipherMode mode = modes.ElementAt(int.Parse(modeChoice) - 1);
-                byte[] iv = GenerateIV(algoChoice);
-                var padding = (mode == CipherMode.CFB || mode == CipherMode.OFB || mode == CipherMode.CTR) 
-                    ? PaddingMode.Zeros : PaddingMode.PKCS7;
+            string? algoChoice = Console.ReadLine();
 
-                var context = new CipherContext(key, mode, padding, iv,
-                    new System.Collections.Generic.KeyValuePair<string, object>("Algorithm", 
-                        algoChoice == "1" ? "DES" : "DEAL"));
-                
-                await context.EncryptAsync(inputFile, outputFile);
-                Console.WriteLine($"Файл успешно зашифрован: {outputFile}");
-                Console.WriteLine($"Использован ключ: {BitConverter.ToString(key)}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Ошибка при шифровании: {ex.Message}");
-            }
-        }
-        
-        static async Task DecryptFile()
-        {
-            Console.WriteLine("\n=== Дешифрование файла ===");
-            
-            Console.Write("Введите путь к зашифрованному файлу: ");
-            string inputFile = Console.ReadLine();
-            
-            Console.Write("Введите путь для расшифрованного файла: ");
-            string outputFile = Console.ReadLine();
-            
-            Console.Write("Введите ключ (hex строка): ");
-            string keyHex = Console.ReadLine();
-            
-            Console.Write("Введите алгоритм (DES/DEAL): ");
-            string algorithm = Console.ReadLine();
-            
-            Console.Write("Введите режим шифрования: ");
-            string modeStr = Console.ReadLine();
-            
-            if (!File.Exists(inputFile))
-            {
-                Console.WriteLine("Зашифрованный файл не существует!");
-                return;
-            }
-            
-            try
-            {
-                byte[] key = HexStringToByteArray(keyHex);
-                CipherMode mode = (CipherMode)Enum.Parse(typeof(CipherMode), modeStr);
-                byte[] iv = GenerateIV(algorithm == "DES" ? "1" : "2");
-                
-                var padding = (mode == CipherMode.CFB || mode == CipherMode.OFB || mode == CipherMode.CTR) 
-                    ? PaddingMode.Zeros : PaddingMode.PKCS7;
-                var context = new CipherContext(key, mode, padding, iv,
-                    new System.Collections.Generic.KeyValuePair<string, object>("Algorithm", algorithm));
-                
-                await context.DecryptAsync(inputFile, outputFile);
-                Console.WriteLine($"Файл успешно расшифрован: {outputFile}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Ошибка при дешифровании: {ex.Message}");
-            }
-        }
-        
-        static byte[] GenerateKey(string choice)
-        {
             Random rnd = new Random();
-            return choice switch
+            return algoChoice switch
             {
-                "1" => Enumerable.Range(0, 8).Select(_ => (byte)rnd.Next(256)).ToArray(),  // DES
-                "2" => Enumerable.Range(0, 16).Select(_ => (byte)rnd.Next(256)).ToArray(), // DEAL-128
-                "3" => Enumerable.Range(0, 24).Select(_ => (byte)rnd.Next(256)).ToArray(), // DEAL-192
-                "4" => Enumerable.Range(0, 32).Select(_ => (byte)rnd.Next(256)).ToArray(), // DEAL-256
+                "1" => ("DES", Enumerable.Range(0, 8).Select(_ => (byte)rnd.Next(256)).ToArray()),
+                "2" => ("DEAL", Enumerable.Range(0, 16).Select(_ => (byte)rnd.Next(256)).ToArray()),
+                "3" => ("DEAL", Enumerable.Range(0, 24).Select(_ => (byte)rnd.Next(256)).ToArray()),
+                "4" => ("DEAL", Enumerable.Range(0, 32).Select(_ => (byte)rnd.Next(256)).ToArray()),
                 _ => throw new ArgumentException("Неверный выбор алгоритма")
             };
         }
-        
-        static byte[] GenerateIV(string algoChoice)
+
+        static (CipherMode, byte[]?) SelectModeAndGenerateIV(string algoName)
         {
-            Random rnd = new Random();
-            int size = algoChoice == "1" ? 8 : 16; // DES=8, DEAL=16
-            return Enumerable.Range(0, size).Select(_ => (byte)rnd.Next(256)).ToArray();
+            Console.WriteLine("Выберите режим шифрования:");
+            var modes = Enum.GetValues<CipherMode>();
+            for (int i = 0; i < modes.Length; i++)
+            {
+                Console.WriteLine($"{i + 1}. {modes[i]}");
+            }
+            string? modeChoice = Console.ReadLine();
+            CipherMode mode = modes[int.Parse(modeChoice ?? "1") - 1];
+
+            byte[]? iv = null;
+            if (mode != CipherMode.ECB)
+            {
+                Random rnd = new Random();
+                int ivSize = algoName == "DES" ? 8 : 16;
+                iv = Enumerable.Range(0, ivSize).Select(_ => (byte)rnd.Next(256)).ToArray();
+            }
+            return (mode, iv);
         }
         
         static byte[] HexStringToByteArray(string hex)
         {
-            
-            hex = hex.Replace("-", "").Replace(" ", "").Replace(":", "");
-            
+            hex = hex.Replace("-", "").Replace(" ", "").Replace(":", "").Trim();
             if (hex.Length % 2 != 0)
-                throw new ArgumentException("Hex string must have even length");
+                throw new ArgumentException("Hex string must have an even number of digits");
             
             byte[] result = new byte[hex.Length / 2];
             for (int i = 0; i < result.Length; i++)

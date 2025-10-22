@@ -262,10 +262,18 @@ namespace CryptoLib.Modes
                 }
                 else
                 {
-                    // Нет, `previousChunk` - это промежуточный блок.
-                    // Просто расшифровываем и записываем его.
-                    byte[] decryptedPrevious = DecryptData(previousChunk);
-                    await outputStream.WriteAsync(decryptedPrevious, 0, decryptedPrevious.Length);
+                    // А здесь (для промежуточных чанков) была ошибка. ИСПРАВЛЯЕМ:
+            // 1. Создаем массив ТОЧНОГО размера, равного количеству прочитанных байт.
+            byte[] chunkToDecrypt = new byte[previousBytesRead];
+            Array.Copy(previousChunk, chunkToDecrypt, previousBytesRead);
+            
+            // 2. Расшифровываем только этот массив, а не весь буфер.
+            byte[] decryptedPrevious = DecryptData(chunkToDecrypt);
+            await outputStream.WriteAsync(decryptedPrevious, 0, decryptedPrevious.Length);
+                    // // Нет, `previousChunk` - это промежуточный блок.
+                    // // Просто расшифровываем и записываем его.
+                    // byte[] decryptedPrevious = DecryptData(previousChunk);
+                    // await outputStream.WriteAsync(decryptedPrevious, 0, decryptedPrevious.Length);
                 }
 
                 // 4. Текущий блок становится предыдущим для следующей итерации.
@@ -479,41 +487,49 @@ namespace CryptoLib.Modes
 
 
         private byte[] EncryptPCBC(byte[] data)
+{
+    int blockSize = _blockSize;
+    byte[] result = new byte[data.Length];
+    var (previousInput, previousOutput) = _pcbcFeedbackRegisters;
+
+    byte[] originalBlock = new byte[blockSize];
+    byte[] blockToEncrypt = new byte[blockSize];
+
+    for (int i = 0; i < data.Length / blockSize; i++)
+    {
+        int offset = i * blockSize;
+        Array.Copy(data, offset, originalBlock, 0, blockSize);
+        Array.Copy(originalBlock, 0, blockToEncrypt, 0, blockSize);
+
+        // *** ИСПРАВЛЕНИЕ ЗДЕСЬ ***
+        byte[] feedback = new byte[blockSize];
+        for (int j = 0; j < blockSize; j++)
         {
-            int blockSize = _blockSize;
-            byte[] result = new byte[data.Length];
-            var (previousInput, previousOutput) = _pcbcFeedbackRegisters;
-
-            // Создаем буферы ОДИН РАЗ перед циклом
-            byte[] originalBlock = new byte[blockSize];
-            byte[] blockToEncrypt = new byte[blockSize];
-
-            for (int i = 0; i < data.Length / blockSize; i++)
-            {
-                int offset = i * blockSize;
-                // Переиспользуем буферы, не создавая новые
-                Array.Copy(data, offset, originalBlock, 0, blockSize);
-                Array.Copy(originalBlock, 0, blockToEncrypt, 0, blockSize);
-
-                for (int j = 0; j < blockSize; j++)
-                {
-                    blockToEncrypt[j] ^= (byte)(previousInput[j] ^ previousOutput[j]);
-                }
-                
-                byte[] encryptedBlock;
-                lock(_algorithmLock)
-                {
-                    encryptedBlock = _algorithm.EncryptBlock(blockToEncrypt);
-                }
-                Array.Copy(encryptedBlock, 0, result, offset, blockSize);
-
-                previousInput = (byte[])originalBlock.Clone();
-                previousOutput = (byte[])encryptedBlock.Clone();
-            }
-            
-            _pcbcFeedbackRegisters = (previousInput, previousOutput);
-            return result;
+            // Для первого блока previousInput == previousOutput == IV,
+            // но теперь мы явно используем правильный фидбэк.
+            feedback[j] = (byte)(previousInput[j] ^ previousOutput[j]);
         }
+
+        for (int j = 0; j < blockSize; j++)
+        {
+            blockToEncrypt[j] ^= feedback[j];
+        }
+        
+        // В оригинальной реализации лок был здесь, сохраним его для потокобезопасности
+        byte[] encryptedBlock;
+        lock(_algorithmLock)
+        {
+            encryptedBlock = _algorithm.EncryptBlock(blockToEncrypt);
+        }
+        Array.Copy(encryptedBlock, 0, result, offset, blockSize);
+
+        previousInput = (byte[])originalBlock.Clone();
+        previousOutput = (byte[])encryptedBlock.Clone();
+    }
+    
+    _pcbcFeedbackRegisters = (previousInput, previousOutput);
+    return result;
+}
 
         // private byte[] DecryptPCBC(byte[] data)
         // {
@@ -545,40 +561,56 @@ namespace CryptoLib.Modes
         // }
 
         private byte[] DecryptPCBC(byte[] data)
+{
+    int blockSize = _blockSize;
+    byte[] result = new byte[data.Length];
+    // Загружаем начальное состояние (IV, IV)
+    var (previousPlaintext, previousCiphertext) = _pcbcFeedbackRegisters;
+
+    // Создаем рабочий буфер для текущего шифроблока ОДИН РАЗ перед циклом
+    byte[] currentCiphertext = new byte[blockSize];
+
+    for (int i = 0; i < data.Length / blockSize; i++)
+    {
+        int offset = i * blockSize;
+        // Копируем текущий шифроблок из входных данных в наш буфер
+        Array.Copy(data, offset, currentCiphertext, 0, blockSize);
+        
+        // 1. Расшифровываем текущий блок
+        byte[] decryptedBlock;
+        lock(_algorithmLock)
         {
-            int blockSize = _blockSize;
-            byte[] result = new byte[data.Length];
-            var (previousInput, previousOutput) = _pcbcFeedbackRegisters;
-
-            // Создаем буфер ОДИН РАЗ перед циклом
-            byte[] encryptedBlock = new byte[blockSize];
-
-            for (int i = 0; i < data.Length / blockSize; i++)
-            {
-                int offset = i * blockSize;
-                // Переиспользуем буфер
-                Array.Copy(data, offset, encryptedBlock, 0, blockSize);
-                
-                byte[] decryptedBlock;
-                lock(_algorithmLock)
-                {
-                    decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
-                }
-
-                for (int j = 0; j < blockSize; j++)
-                {
-                    decryptedBlock[j] ^= (byte)(previousInput[j] ^ previousOutput[j]);
-                }
-
-                Array.Copy(decryptedBlock, 0, result, offset, blockSize);
-                
-                previousInput = (byte[])decryptedBlock.Clone();
-                previousOutput = (byte[])encryptedBlock.Clone();
-            }
-            
-            _pcbcFeedbackRegisters = (previousInput, previousOutput);
-            return result;
+            decryptedBlock = _algorithm.DecryptBlock(currentCiphertext);
         }
+
+        // 2. Вычисляем фидбэк из предыдущих блоков
+        // (previousPlaintext XOR previousCiphertext)
+        byte[] feedback = new byte[blockSize];
+        for (int j = 0; j < blockSize; j++)
+        {
+            feedback[j] = (byte)(previousPlaintext[j] ^ previousCiphertext[j]);
+        }
+
+        // 3. Применяем XOR к расшифрованному блоку, чтобы получить итоговый открытый текст
+        for (int j = 0; j < blockSize; j++)
+        {
+            decryptedBlock[j] ^= feedback[j];
+        }
+
+        // Копируем полученный блок открытого текста в результирующий массив
+        Array.Copy(decryptedBlock, 0, result, offset, blockSize);
+        
+        // 4. Обновляем состояние для СЛЕДУЮЩЕЙ итерации:
+        // - "Предыдущим открытым текстом" становится только что полученный блок
+        previousPlaintext = (byte[])decryptedBlock.Clone();
+        // - "Предыдущим шифротекстом" становится текущий блок
+        previousCiphertext = (byte[])currentCiphertext.Clone();
+    }
+    
+    // Сохраняем конечное состояние
+    _pcbcFeedbackRegisters = (previousPlaintext, previousCiphertext);
+    return result;
+}
 
         private byte[] EncryptCFB(byte[] data)
         {
