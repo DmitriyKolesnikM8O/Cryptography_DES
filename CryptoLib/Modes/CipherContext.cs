@@ -211,8 +211,8 @@ public async Task EncryptAsync(Stream inputStream, Stream outputStream)
             byte[] finalData = new byte[bytesRead];
             Array.Copy(buffer, finalData, bytesRead);
             
-            // --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
-            if (_mode == CipherMode.CTR)
+            
+            if (_mode == CipherMode.CTR || _mode == CipherMode.OFB)
             {
                 // Для CTR используем данные "как есть", без паддинга
                 chunkToEncrypt = finalData;
@@ -258,9 +258,9 @@ public async Task DecryptAsync(Stream inputStream, Stream outputStream)
 
             byte[] decryptedFinal = DecryptData(finalChunk);
             
-            // --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
+            
             byte[] resultToWrite;
-            if (_mode == CipherMode.CTR)
+            if (_mode == CipherMode.CTR || _mode == CipherMode.OFB)
             {
                 // Для CTR результат дешифровки и есть финальный, паддинга нет
                 resultToWrite = decryptedFinal;
@@ -726,38 +726,49 @@ public async Task DecryptAsync(Stream inputStream, Stream outputStream)
         //     return result;
         // }
         
-        private byte[] EncryptOFB(byte[] data)
+        // В файле CryptoLib/Modes/CipherContext.cs
+
+private byte[] EncryptOFB(byte[] data)
+{
+    int blockSize = _blockSize;
+    byte[] result = new byte[data.Length];
+    // Загружаем начальное состояние (IV)
+    byte[] feedback = _feedbackRegister;
+
+    int offset = 0;
+    // Используем цикл while, чтобы пройти по ВСЕМ данным,
+    // включая последний неполный блок.
+    while (offset < data.Length)
+    {
+        // 1. Генерируем следующий блок потока ключей, шифруя фидбэк
+        byte[] keystream;
+        lock (_algorithmLock)
         {
-            int blockSize = _blockSize;
-            byte[] result = new byte[data.Length];
-            byte[] feedback = _feedbackRegister;
-
-            // Создаем буфер ОДИН РАЗ перед циклом
-            byte[] block = new byte[blockSize];
-
-            for (int i = 0; i < data.Length / blockSize; i++)
-            {
-                int offset = i * blockSize;
-                
-                byte[] keystream;
-                lock (_algorithmLock)
-                {
-                    keystream = _algorithm.EncryptBlock(feedback);
-                }
-                
-                feedback = keystream;
-
-                // Переиспользуем буфер
-                Array.Copy(data, offset, block, 0, blockSize);
-                for (int j = 0; j < blockSize; j++)
-                {
-                    result[offset + j] = (byte)(block[j] ^ keystream[j]);
-                }
-            }
-            
-            _feedbackRegister = feedback;
-            return result;
+            keystream = _algorithm.EncryptBlock(feedback);
         }
+        
+        // 2. Важно: фидбэком для СЛЕДУЮЩЕЙ итерации становится
+        // только что сгенерированный блок потока ключей.
+        feedback = keystream;
+
+        // 3. Определяем, сколько байт нужно обработать на этой итерации
+        // (это будет полный блок, либо "остаток" в самом конце)
+        int bytesToProcess = Math.Min(blockSize, data.Length - offset);
+        
+        // 4. Применяем XOR к данным
+        for (int j = 0; j < bytesToProcess; j++)
+        {
+            result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
+        }
+        
+        // 5. Переходим к следующему блоку
+        offset += blockSize;
+    }
+    
+    // Сохраняем конечное состояние фидбэка
+    _feedbackRegister = feedback;
+    return result;
+}
 
         private byte[] DecryptOFB(byte[] data)
         {
