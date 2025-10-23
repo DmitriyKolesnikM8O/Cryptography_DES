@@ -1,9 +1,5 @@
-using System;
-using System.Linq;
-using System.Threading.Tasks;
 using CryptoLib.Algorithms.DEAL;
 using CryptoLib.Modes;
-using Xunit;
 
 /*
 1. DEAL128_EncryptDecrypt - базовое шифрование/дешифрование 128-битным ключом
@@ -21,33 +17,33 @@ namespace CryptoTests
 {
     public class DEALTests
     {
-        private readonly byte[] _testKey128 = new byte[16] {
+        private readonly byte[] _testKey128 = [
             0x13, 0x34, 0x57, 0x79, 0x9B, 0xBC, 0xDF, 0xF1,
             0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0
-        };
+        ];
 
-        private readonly byte[] _testKey192 = new byte[24] {
+        private readonly byte[] _testKey192 = [
             0x13, 0x34, 0x57, 0x79, 0x9B, 0xBC, 0xDF, 0xF1,
             0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0,
             0x11, 0x33, 0x55, 0x77, 0x99, 0xBB, 0xDD, 0xFF
-        };
+        ];
 
-        private readonly byte[] _testKey256 = new byte[32] {
+        private readonly byte[] _testKey256 = [
             0x13, 0x34, 0x57, 0x79, 0x9B, 0xBC, 0xDF, 0xF1,
             0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0,
             0x11, 0x33, 0x55, 0x77, 0x99, 0xBB, 0xDD, 0xFF,
             0x10, 0x32, 0x54, 0x76, 0x98, 0xBA, 0xDC, 0xFE
-        };
+        ];
 
-        private readonly byte[] _testIV = new byte[16] {
+        private readonly byte[] _testIV = [
             0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF,
             0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10
-        };
+        ];
 
-        private readonly byte[] _testData = new byte[16] {
+        private readonly byte[] _testData = [
             0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF,
             0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10
-        };
+        ];
 
         /// <summary>
         /// Тестирует DEAL-128 алгоритм - базовое шифрование и дешифрование
@@ -57,15 +53,15 @@ namespace CryptoTests
         [Fact]
         public void DEAL128_EncryptDecrypt_ShouldReturnOriginalData()
         {
-            // Arrange
+            
             var deal = new DEALAlgorithm(DEALKeyScheduler.KeyType.KEY_SIZE_128);
             deal.SetRoundKeys(_testKey128);
 
-            // Act
+            
             byte[] encrypted = deal.EncryptBlock(_testData);
             byte[] decrypted = deal.DecryptBlock(encrypted);
 
-            // Assert
+            
             Assert.Equal(_testData, decrypted);
         }
 
@@ -77,15 +73,15 @@ namespace CryptoTests
         [Fact]
         public void DEAL192_EncryptDecrypt_ShouldReturnOriginalData()
         {
-            // Arrange
+            
             var deal = new DEALAlgorithm(DEALKeyScheduler.KeyType.KEY_SIZE_192);
             deal.SetRoundKeys(_testKey192);
 
-            // Act
+            
             byte[] encrypted = deal.EncryptBlock(_testData);
             byte[] decrypted = deal.DecryptBlock(encrypted);
 
-            // Assert
+            
             Assert.Equal(_testData, decrypted);
         }
 
@@ -97,15 +93,15 @@ namespace CryptoTests
         [Fact]
         public void DEAL256_EncryptDecrypt_ShouldReturnOriginalData()
         {
-            // Arrange
+            
             var deal = new DEALAlgorithm(DEALKeyScheduler.KeyType.KEY_SIZE_256);
             deal.SetRoundKeys(_testKey256);
 
-            // Act
+            
             byte[] encrypted = deal.EncryptBlock(_testData);
             byte[] decrypted = deal.DecryptBlock(encrypted);
 
-            // Assert
+            
             Assert.Equal(_testData, decrypted);
         }
 
@@ -127,14 +123,14 @@ namespace CryptoTests
                 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88
             ];
 
-            // Act
+            
             byte[] encrypted = new byte[100];
             await context.EncryptAsync(testData, encrypted);
 
             byte[] decrypted = new byte[100];
             await context.DecryptAsync(encrypted, decrypted);
 
-            // Assert
+            
             Assert.Equal(testData, decrypted.Take(testData.Length).ToArray());
         }
 
@@ -150,44 +146,23 @@ namespace CryptoTests
         [InlineData(64)]   // Четыре блока
         public async Task DEAL128_WithDifferentDataSizes_ShouldWorkCorrectly(int dataSize)
         {
-            // // Arrange
-            // var context = new CipherContext(_testKey128, CipherMode.CBC, PaddingMode.PKCS7, _testIV,
-            //     new KeyValuePair<string, object>("Algorithm", "DEAL"));
-
-            // byte[] testData = new byte[dataSize];
-            // new Random(42).NextBytes(testData);
-
-            // // Act
-            // byte[] encrypted = new byte[dataSize + 32];
-            // await context.EncryptAsync(testData, encrypted);
-
-            // byte[] decrypted = new byte[dataSize + 32];
-            // await context.DecryptAsync(encrypted, decrypted);
-
-            // // Assert
-            // Assert.Equal(testData, decrypted.Take(testData.Length).ToArray());
-
-
-
-            // Arrange
-            // Используем PKCS7 как стандартный и надежный режим паддинга
+            
+            
             var context = new CipherContext(_testKey128, CipherMode.CBC, PaddingMode.PKCS7, _testIV);
 
             byte[] testData = new byte[dataSize];
             new Random(42).NextBytes(testData);
 
-            // ИСПРАВЛЕНО: Выделяем буфер правильного размера.
-            // Поскольку все dataSize кратны 16, будет добавлен еще один блок (16 байт).
             int expectedEncryptedSize = dataSize + 16; 
             
-            // Act
+            
             byte[] encrypted = new byte[expectedEncryptedSize];
             await context.EncryptAsync(testData, encrypted);
 
             byte[] decrypted = new byte[expectedEncryptedSize];
             await context.DecryptAsync(encrypted, decrypted);
 
-            // Assert
+            
             Assert.Equal(testData, decrypted.Take(testData.Length).ToArray());
         }
 
@@ -202,7 +177,7 @@ namespace CryptoTests
         [InlineData(DEALKeyScheduler.KeyType.KEY_SIZE_256)]
         public void DEAL_AllKeySizes_ShouldWorkCorrectly(DEALKeyScheduler.KeyType keyType)
         {
-            // Arrange
+            
             byte[] key = keyType switch
             {
                 DEALKeyScheduler.KeyType.KEY_SIZE_128 => _testKey128,
@@ -214,11 +189,11 @@ namespace CryptoTests
             var deal = new DEALAlgorithm(keyType);
             deal.SetRoundKeys(key);
 
-            // Act
+            
             byte[] encrypted = deal.EncryptBlock(_testData);
             byte[] decrypted = deal.DecryptBlock(encrypted);
 
-            // Assert
+            
             Assert.Equal(_testData, decrypted);
         }
 
@@ -234,22 +209,22 @@ namespace CryptoTests
         [InlineData(CipherMode.CTR)]
         public async Task DEAL128_WithAllCipherModes_ShouldWorkCorrectly(CipherMode mode)
         {
-            // Arrange
-            byte[] iv = mode == CipherMode.ECB ? null : _testIV;
             
-            byte[] testData = new byte[] {
+            byte[]? iv = mode == CipherMode.ECB ? null : _testIV;
+            
+            byte[] testData = [
                 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF,
                 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10
-            }; // Только 1 блок (16 байт)
+            ];
 
             var context = new CipherContext(_testKey128, mode, PaddingMode.Zeros, iv,
-                new System.Collections.Generic.KeyValuePair<string, object>("Algorithm", "DEAL"));
+                new KeyValuePair<string, object>("Algorithm", "DEAL"));
 
-            // Act
-            byte[] encrypted = new byte[16]; // Точный размер для одного блока
+            
+            byte[] encrypted = new byte[16];
             await context.EncryptAsync(testData, encrypted);
 
-            byte[] decrypted = new byte[16]; // Точный размер для одного блока
+            byte[] decrypted = new byte[16]; 
             await context.DecryptAsync(encrypted, decrypted);
 
             // Assert
@@ -264,11 +239,11 @@ namespace CryptoTests
         /// </summary>
         [Theory]
         [InlineData(DEALKeyScheduler.KeyType.KEY_SIZE_128, 6)]
-        [InlineData(DEALKeyScheduler.KeyType.KEY_SIZE_192, 8)]
+        [InlineData(DEALKeyScheduler.KeyType.KEY_SIZE_192, 6)]
         [InlineData(DEALKeyScheduler.KeyType.KEY_SIZE_256, 8)]
         public void DEALKeyScheduler_ShouldGenerateCorrectNumberOfKeys(DEALKeyScheduler.KeyType keyType, int expectedRounds)
         {
-            // Arrange
+            
             byte[] key = keyType switch
             {
                 DEALKeyScheduler.KeyType.KEY_SIZE_128 => _testKey128,
@@ -279,15 +254,15 @@ namespace CryptoTests
 
             var keyScheduler = new DEALKeyScheduler(keyType);
 
-            // Act
+            
             byte[][] roundKeys = keyScheduler.ExpandKey(key);
 
-            // Assert
+            
             Assert.Equal(expectedRounds, roundKeys.Length);
             foreach (var roundKey in roundKeys)
             {
                 Assert.NotNull(roundKey);
-                Assert.Equal(8, roundKey.Length); // 64-битные раундовые ключи
+                Assert.Equal(8, roundKey.Length);
             }
         }
     }

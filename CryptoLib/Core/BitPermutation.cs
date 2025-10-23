@@ -1,9 +1,25 @@
-using System;
-
 namespace CryptoLib.Core
 {
+    /// <summary>
+    /// Статический класс, предоставляющий утилитарные методы для выполнения битовых перестановок
+    /// на основе таблицы перестановок (P-блока).
+    /// </summary>
     public static class BitPermutation
     {
+        /// <summary>
+        /// Выполняет битовую перестановку для входного массива байтов и возвращает результат в новом массиве.
+        /// </summary>
+        /// <param name="inputValue">Входной массив байтов, биты которого будут переставляться.</param>
+        /// <param name="pBlock">Таблица перестановок (P-блок). Массив, указывающий новые позиции для каждого бита.</param>
+        /// <param name="indexingRule">
+        /// Правило индексации битов в байте.
+        /// <c>true</c> для LSB-first (младший бит справа, бит 0 = маска 0x01).
+        /// <c>false</c> для MSB-first (старший бит слева, бит 0 = маска 0x80).
+        /// </param>
+        /// <param name="zeroIndex">
+        /// Определяет, является ли нумерация в P-блоке 0-индексированной (<c>true</c>) или 1-индексированной (<c>false</c>).
+        /// </param>
+        /// <returns>Новый массив байтов, содержащий результат перестановки.</returns>
         public static byte[] PermutationBytes(
             byte[] inputValue,
             int[] pBlock,
@@ -21,6 +37,20 @@ namespace CryptoLib.Core
             return result;
         }
 
+        /// <summary>
+        /// Выполняет битовую перестановку для входного массива байтов и записывает результат в предоставленный массив <paramref name="destination"/>.
+        /// </summary>
+        /// <param name="inputValue">Входной массив байтов, биты которого будут переставляться.</param>
+        /// <param name="pBlock">Таблица перестановок (P-блок)</param>
+        /// <param name="destination">Массив байтов, в который будет записан результат перестановки. Содержимое будет перезаписано.</param>
+        /// <param name="indexingRule">
+        /// Правило индексации битов в байте.
+        /// <c>true</c> для LSB-first (младший бит справа, бит 0 = маска 0x01).
+        /// <c>false</c> для MSB-first (старший бит слева, бит 0 = маска 0x80).
+        /// </param>
+        /// <param name="zeroIndex">
+        /// Определяет, является ли нумерация в P-блоке 0-индексированной (<c>true</c>) или 1-индексированной (<c>false</c>).
+        /// </param>
         public static void PermutationBytes(
             byte[] inputValue,
             int[] pBlock,
@@ -34,12 +64,12 @@ namespace CryptoLib.Core
             if (destination.Length * 8 < pBlock.Length)
                 throw new ArgumentException("Destination array is too small for the permutation result.");
 
-            // === ВОССТАНОВЛЕННАЯ И УЛУЧШЕННАЯ ПРОВЕРКА ===
+
             int inputBitLength = inputValue.Length * 8;
             int indexOffset = zeroIndex ? 0 : 1;
-            // Проверяем только минимальное и максимальное значения в P-блоке, это быстрее чем .Any()
+
             int minP = int.MaxValue, maxP = int.MinValue;
-            for(int i = 0; i < pBlock.Length; i++)
+            for (int i = 0; i < pBlock.Length; i++)
             {
                 if (pBlock[i] < minP) minP = pBlock[i];
                 if (pBlock[i] > maxP) maxP = pBlock[i];
@@ -48,7 +78,7 @@ namespace CryptoLib.Core
             {
                 throw new ArgumentException($"P-Block contains an index out of the valid range.");
             }
-            // ===============================================
+
 
             Array.Clear(destination, 0, destination.Length);
 
@@ -70,16 +100,27 @@ namespace CryptoLib.Core
             }
         }
 
+        /// <summary>
+        /// Получает значение бита по указанному индексу, используя нумерацию LSB-first (младший бит справа).
+        /// В этой схеме бит 0 - это самый правый бит (маска 0x01), а бит 7 - самый левый (маска 0x80).
+        /// </summary>
         private static bool GetBitLSB(byte[] data, int bitIndex)
         {
             return (data[bitIndex >> 3] & (1 << (bitIndex & 7))) != 0;
         }
 
+        /// <summary>
+        /// Получает значение бита по указанному индексу, используя нумерацию MSB-first (старший бит слева).
+        /// В этой схеме бит 0 - это самый левый бит (маска 0x80), а бит 7 - самый правый (маска 0x01).
+        /// </summary>
         private static bool GetBitMSB(byte[] data, int bitIndex)
         {
             return (data[bitIndex >> 3] & (1 << (7 - (bitIndex & 7)))) != 0;
         }
 
+        /// <summary>
+        /// Устанавливает значение бита по указанному индексу, используя нумерацию LSB-first (младший бит справа).
+        /// </summary>
         private static void SetBitLSB(byte[] data, int bitIndex, bool value)
         {
             int byteIndex = bitIndex >> 3;
@@ -90,6 +131,9 @@ namespace CryptoLib.Core
                 data[byteIndex] &= (byte)~(1 << bitInByte);
         }
 
+        /// <summary>
+        /// Устанавливает значение бита по указанному индексу, используя нумерацию MSB-first (старший бит слева).
+        /// </summary>
         private static void SetBitMSB(byte[] data, int bitIndex, bool value)
         {
             int byteIndex = bitIndex >> 3;

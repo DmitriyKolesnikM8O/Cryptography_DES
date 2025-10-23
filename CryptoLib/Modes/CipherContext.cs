@@ -1,33 +1,39 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using CryptoLib.Interfaces;
 using CryptoLib.Algorithms.DES;
 using CryptoLib.Algorithms.DEAL;
 
 namespace CryptoLib.Modes
 {
+    /// <summary>
+    /// Представляет собой "оркестратор" для выполнения операций симметричного шифрования и дешифрования.
+    /// Этот класс инкапсулирует логику выбора алгоритма, режима шифрования, управления состоянием (IV, фидбэки) и применения паддинга.
+    /// </summary>
     public class CipherContext
     {
         private readonly ISymmetricCipher _algorithm;
         private readonly CipherMode _mode;
-
-        private readonly object _algorithmLock = new object();
+        private readonly object _algorithmLock = new object(); // Для потокобезопасности
         private readonly PaddingMode _padding;
         private readonly byte[] _initializationVector;
         private readonly int _blockSize;
 
+        // Регистры состояния для режимов с обратной связью
         private (byte[] Plaintext, byte[] Ciphertext) _pcbcFeedbackRegisters;
-
         private byte[] _feedbackRegister = default!;
 
+        /// <summary>
+        /// Инициализирует новый экземпляр класса CipherContext с заданными параметрами шифрования.
+        /// </summary>
+        /// <param name="key">Секретный ключ для шифрования и дешифрования.</param>
+        /// <param name="mode">Режим работы блочного шифра (ECB, CBC, CTR и т.д.).</param>
+        /// <param name="padding">Схема дополнения (паддинга) для выравнивания данных по размеру блока.</param>
+        /// <param name="initializationVector">Вектор инициализации (IV)</param>
+        /// <param name="additionalParameters">Дополнительные параметры, например, для явного указания алгоритма ("Algorithm", "DES"/"DEAL").</param>
         public CipherContext(
             byte[] key,
             CipherMode mode,
             PaddingMode padding,
-            byte[] initializationVector = null,
+            byte[]? initializationVector = null,
             params KeyValuePair<string, object>[] additionalParameters)
         {
             _mode = mode;
@@ -39,26 +45,32 @@ namespace CryptoLib.Modes
             _blockSize = _algorithm.BlockSize;
 
             ValidateParameters();
-
-            
         }
-        
+
+        /// <summary>
+        /// Инициализирует или сбрасывает внутреннее состояние (регистры обратной связи) перед началом новой операции шифрования или дешифрования.
+        /// Использует вектор инициализации для установки начальных значений.
+        /// </summary>
         private void InitializeState()
         {
             if (_mode != CipherMode.ECB && _initializationVector != null)
             {
                 _feedbackRegister = (byte[])_initializationVector.Clone();
-                _pcbcFeedbackRegisters = 
+                _pcbcFeedbackRegisters =
                 (
-                    (byte[])_initializationVector.Clone(), 
+                    (byte[])_initializationVector.Clone(),
                     (byte[])_initializationVector.Clone()
                 );
             }
         }
 
+        /// <summary>
+        /// Метод, который создает и возвращает экземпляр нужного алгоритма шифрования (DES или DEAL)
+        /// на основе размера ключа или явно переданного параметра.
+        /// </summary>
         private ISymmetricCipher CreateAlgorithm(byte[] key, KeyValuePair<string, object>[] additionalParameters)
         {
-            // Сначала проверяем явное указание алгоритма в дополнительных параметрах
+
             if (additionalParameters != null)
             {
                 var algorithmParam = additionalParameters.FirstOrDefault(p => p.Key == "Algorithm");
@@ -68,7 +80,7 @@ namespace CryptoLib.Modes
 
                     if (algorithmValue.Contains("DEAL"))
                     {
-                        // Для DEAL определяем тип по размеру ключа
+
                         return key.Length switch
                         {
                             16 => new DEALAlgorithm(DEALKeyScheduler.KeyType.KEY_SIZE_128),
@@ -91,7 +103,7 @@ namespace CryptoLib.Modes
                 }
             }
 
-            // Автоопределение по размеру ключа
+
             return key.Length switch
             {
                 8 => new DESAlgorithm(),
@@ -102,6 +114,9 @@ namespace CryptoLib.Modes
             };
         }
 
+        /// <summary>
+        /// Проверяет корректность предоставленных параметров, например, наличие IV для режимов, которые его требуют.
+        /// </summary>
         private void ValidateParameters()
         {
             if (_mode != CipherMode.ECB && _initializationVector == null)
@@ -117,9 +132,14 @@ namespace CryptoLib.Modes
             }
         }
 
+        /// <summary>
+        /// Асинхронно шифрует данные из входного массива байтов и записывает результат в выходной массив.
+        /// </summary>
+        /// <param name="inputData">Массив байтов с открытым текстом.</param>
+        /// <param name="output">Массив байтов для записи шифротекста. Должен иметь достаточный размер.</param>
         public async Task EncryptAsync(byte[] inputData, byte[] output)
         {
-            InitializeState(); 
+            InitializeState();
             if (inputData == null) throw new ArgumentNullException(nameof(inputData));
             if (output == null) throw new ArgumentNullException(nameof(output));
 
@@ -127,15 +147,20 @@ namespace CryptoLib.Modes
             {
                 byte[] paddedData = ApplyPadding(inputData, _blockSize);
                 byte[] encryptedData = EncryptData(paddedData);
-                
+
                 int copyLength = Math.Min(encryptedData.Length, output.Length);
                 Array.Copy(encryptedData, output, copyLength);
             });
         }
 
+        /// <summary>
+        /// Асинхронно дешифрует данные из входного массива байтов и записывает результат в выходной массив.
+        /// </summary>
+        /// <param name="inputData">Массив байтов с шифротекстом.</param>
+        /// <param name="output">Массив байтов для записи открытого текста. Должен иметь достаточный размер.</param>
         public async Task DecryptAsync(byte[] inputData, byte[] output)
         {
-            InitializeState(); 
+            InitializeState();
             if (inputData == null) throw new ArgumentNullException(nameof(inputData));
             if (output == null) throw new ArgumentNullException(nameof(output));
 
@@ -143,7 +168,7 @@ namespace CryptoLib.Modes
             {
                 byte[] decryptedData = DecryptData(inputData);
                 byte[] unpaddedData = RemovePadding(decryptedData);
-                
+
                 int copyLength = Math.Min(unpaddedData.Length, output.Length);
                 Array.Copy(unpaddedData, output, copyLength);
             });
@@ -170,9 +195,14 @@ namespace CryptoLib.Modes
         //     await File.WriteAllBytesAsync(outputFilePath, decryptedData);
         // }
 
+        /// <summary>
+        /// Асинхронно шифрует содержимое файла, указанного в <paramref name="inputFilePath"/>, и сохраняет результат в <paramref name="outputFilePath"/>.
+        /// </summary>
+        /// <param name="inputFilePath">Путь к исходному файлу.</param>
+        /// <param name="outputFilePath">Путь к файлу для сохранения шифротекста.</param>
         public async Task EncryptAsync(string inputFilePath, string outputFilePath)
         {
-            InitializeState(); 
+            InitializeState();
             if (!File.Exists(inputFilePath))
                 throw new FileNotFoundException($"Входной файл не найден: {inputFilePath}");
 
@@ -181,9 +211,14 @@ namespace CryptoLib.Modes
             await EncryptAsync(inputFileStream, outputFileStream);
         }
 
+        /// <summary>
+        /// Асинхронно дешифрует содержимое файла, указанного в <paramref name="inputFilePath"/>, и сохраняет результат в <paramref name="outputFilePath"/>.
+        /// </summary>
+        /// <param name="inputFilePath">Путь к зашифрованному файлу.</param>
+        /// <param name="outputFilePath">Путь к файлу для сохранения расшифрованного текста.</param>
         public async Task DecryptAsync(string inputFilePath, string outputFilePath)
         {
-            InitializeState(); 
+            InitializeState();
             if (!File.Exists(inputFilePath))
                 throw new FileNotFoundException($"Входной файл не найден: {inputFilePath}");
 
@@ -192,119 +227,102 @@ namespace CryptoLib.Modes
             await DecryptAsync(inputFileStream, outputFileStream); // Делегируем потоковой версии
         }
 
-        
-
-public async Task EncryptAsync(Stream inputStream, Stream outputStream)
-{
-    InitializeState();
-    const int bufferSize = 65536; 
-    byte[] buffer = new byte[bufferSize];
-    int bytesRead;
-
-    while ((bytesRead = await inputStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
-    {
-        bool isLastChunk = bytesRead < bufferSize;
-
-        byte[] chunkToEncrypt;
-        if (isLastChunk)
+        /// <summary>
+        /// Асинхронно шифрует данные из входного потока и записывает результат в выходной поток.
+        /// Реализует потоковую обработку для эффективной работы с большими файлами.
+        /// </summary>
+        /// <param name="inputStream">Поток с исходными данными.</param>
+        /// <param name="outputStream">Поток для записи зашифрованных данных.</param>
+        public async Task EncryptAsync(Stream inputStream, Stream outputStream)
         {
-            byte[] finalData = new byte[bytesRead];
-            Array.Copy(buffer, finalData, bytesRead);
-            
-            
-            if (_mode == CipherMode.CTR || _mode == CipherMode.OFB)
+            InitializeState();
+            const int bufferSize = 65536;
+            byte[] buffer = new byte[bufferSize];
+            int bytesRead;
+
+            while ((bytesRead = await inputStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
             {
-                // Для CTR используем данные "как есть", без паддинга
-                chunkToEncrypt = finalData;
-            }
-            else
-            {
-                // Для остальных режимов применяем паддинг как и раньше
-                chunkToEncrypt = ApplyPadding(finalData, _blockSize);
+                bool isLastChunk = bytesRead < bufferSize;
+
+                byte[] chunkToEncrypt;
+                if (isLastChunk)
+                {
+                    byte[] finalData = new byte[bytesRead];
+                    Array.Copy(buffer, finalData, bytesRead);
+
+                    if (_mode == CipherMode.CTR || _mode == CipherMode.OFB || _mode == CipherMode.CFB)
+                    {
+
+                        chunkToEncrypt = finalData;
+                    }
+                    else
+                    {
+                        chunkToEncrypt = ApplyPadding(finalData, _blockSize);
+                    }
+                }
+                else
+                {
+                    chunkToEncrypt = buffer;
+                }
+
+                byte[] encryptedChunk = EncryptData(chunkToEncrypt);
+                await outputStream.WriteAsync(encryptedChunk, 0, encryptedChunk.Length);
             }
         }
-        else
+
+        /// <summary>
+        /// Асинхронно дешифрует данные из входного потока и записывает результат в выходной поток.
+        /// Реализует потоковую обработку для эффективной работы с большими файлами.
+        /// </summary>
+        /// <param name="inputStream">Поток с зашифрованными данными.</param>
+        /// <param name="outputStream">Поток для записи расшифрованных данных.</param>
+        public async Task DecryptAsync(Stream inputStream, Stream outputStream)
         {
-            chunkToEncrypt = buffer;
-        }
-        
-        byte[] encryptedChunk = EncryptData(chunkToEncrypt);
-        
-        await outputStream.WriteAsync(encryptedChunk, 0, encryptedChunk.Length);
-    }
-}
+            InitializeState();
+            const int bufferSize = 65536;
+            byte[] buffer = new byte[bufferSize];
+            int bytesRead;
 
-
-public async Task DecryptAsync(Stream inputStream, Stream outputStream)
-{
-    InitializeState();
-    const int bufferSize = 65536;
-    byte[] buffer = new byte[bufferSize];
-    int bytesRead;
-    
-    byte[] previousChunk = new byte[bufferSize];
-    int previousBytesRead = 0;
-
-    previousBytesRead = await inputStream.ReadAsync(previousChunk, 0, previousChunk.Length);
-
-    while (previousBytesRead > 0)
-    {
-        bytesRead = await inputStream.ReadAsync(buffer, 0, buffer.Length);
-
-        if (bytesRead == 0) // Последний блок
-        {
-            byte[] finalChunk = new byte[previousBytesRead];
-            Array.Copy(previousChunk, finalChunk, previousBytesRead);
-
-            byte[] decryptedFinal = DecryptData(finalChunk);
-            
-            
-            byte[] resultToWrite;
-            if (_mode == CipherMode.CTR || _mode == CipherMode.OFB)
+            byte[] previousChunk = new byte[bufferSize];
+            int previousBytesRead = await inputStream.ReadAsync(previousChunk, 0, previousChunk.Length);
+            while (previousBytesRead > 0)
             {
-                // Для CTR результат дешифровки и есть финальный, паддинга нет
-                resultToWrite = decryptedFinal;
+                bytesRead = await inputStream.ReadAsync(buffer, 0, buffer.Length);
+
+                if (bytesRead == 0) // ласт блок
+                {
+                    byte[] finalChunk = new byte[previousBytesRead];
+                    Array.Copy(previousChunk, finalChunk, previousBytesRead);
+
+                    byte[] decryptedFinal = DecryptData(finalChunk);
+                    byte[] resultToWrite;
+                    if (_mode == CipherMode.CTR || _mode == CipherMode.OFB || _mode == CipherMode.CFB)
+                    {
+                        resultToWrite = decryptedFinal;
+                    }
+                    else
+                    {
+                        resultToWrite = RemovePadding(decryptedFinal);
+                    }
+                    await outputStream.WriteAsync(resultToWrite, 0, resultToWrite.Length);
+                }
+                else 
+                {
+                    byte[] chunkToDecrypt = new byte[previousBytesRead];
+                    Array.Copy(previousChunk, chunkToDecrypt, previousBytesRead);
+
+                    byte[] decryptedPrevious = DecryptData(chunkToDecrypt);
+                    await outputStream.WriteAsync(decryptedPrevious, 0, decryptedPrevious.Length);
+                }
+
+                Array.Copy(buffer, previousChunk, bytesRead);
+                previousBytesRead = bytesRead;
             }
-            else
-            {
-                // Для остальных режимов убираем паддинг
-                resultToWrite = RemovePadding(decryptedFinal);
-            }
-            await outputStream.WriteAsync(resultToWrite, 0, resultToWrite.Length);
-        }
-        else // Промежуточный блок
-        {
-            byte[] chunkToDecrypt = new byte[previousBytesRead];
-            Array.Copy(previousChunk, chunkToDecrypt, previousBytesRead);
-            
-            byte[] decryptedPrevious = DecryptData(chunkToDecrypt);
-            await outputStream.WriteAsync(decryptedPrevious, 0, decryptedPrevious.Length);
         }
 
-        Array.Copy(buffer, previousChunk, bytesRead);
-        previousBytesRead = bytesRead;
-    }
-}
-
-        // эта хуйня вроде не  используется
-        // private async Task<byte[]> EncryptDataAsync(byte[] data)
-        // {
-        //     return await Task.Run(() =>
-        //     {
-        //         byte[] paddedData = ApplyPadding(data, _blockSize);
-        //         return EncryptData(paddedData);
-        //     });
-        // }
-
-        // private async Task<byte[]> DecryptDataAsync(byte[] data)
-        // {
-        //     return await Task.Run(() =>
-        //     {
-        //         byte[] decryptedData = DecryptData(data);
-        //         return RemovePadding(decryptedData);
-        //     });
-        // }
-
+        /// <summary>
+        /// Метод, выбирающий конкретную реализацию шифрования в зависимости от установленного режима.
+        /// </summary>
         private byte[] EncryptData(byte[] data)
         {
             return _mode switch
@@ -320,6 +338,9 @@ public async Task DecryptAsync(Stream inputStream, Stream outputStream)
             };
         }
 
+        /// <summary>
+        /// Метод, выбирающий конкретную реализацию дешифрования в зависимости от установленного режима.
+        /// </summary>
         private byte[] DecryptData(byte[] data)
         {
             return _mode switch
@@ -335,104 +356,71 @@ public async Task DecryptAsync(Stream inputStream, Stream outputStream)
             };
         }
 
+        /// <summary>
+        /// Шифрует данные в режиме Electronic Codebook (ECB).
+        /// Каждый блок шифруется независимо от других
+        /// </summary>
         private byte[] EncryptECB(byte[] data)
         {
             int blockSize = _blockSize;
             byte[] result = new byte[data.Length];
-            
+
             Parallel.For(0, data.Length / blockSize, i =>
             {
                 int offset = i * blockSize;
                 byte[] block = new byte[blockSize];
                 Array.Copy(data, offset, block, 0, blockSize);
-                
-                // БЛОКИРОВКА УБРАНА - теперь это безопасно и быстро
+
+
                 byte[] encryptedBlock = _algorithm.EncryptBlock(block);
 
                 Array.Copy(encryptedBlock, 0, result, offset, blockSize);
             });
-            
+
             return result;
         }
 
+        /// <summary>
+        /// Дешифрует данные в режиме Electronic Codebook (ECB).
+        /// Каждый блок дешифруется независимо.
+        /// </summary>
         private byte[] DecryptECB(byte[] data)
         {
             int blockSize = _blockSize;
             byte[] result = new byte[data.Length];
-            
+
             Parallel.For(0, data.Length / blockSize, i =>
             {
                 int offset = i * blockSize;
                 byte[] block = new byte[blockSize];
                 Array.Copy(data, offset, block, 0, blockSize);
-                
-                // Блокировка убрана
+
+
                 byte[] decryptedBlock = _algorithm.DecryptBlock(block);
 
                 Array.Copy(decryptedBlock, 0, result, offset, blockSize);
             });
-            
+
             return result;
         }
 
-
-        // private byte[] DecryptCBC(byte[] data)
-        // {
-        //     int blockSize = _blockSize;
-        //     int blockCount = data.Length / blockSize;
-        //     byte[] result = new byte[data.Length];
-
-        //     // Получаем все зашифрованные блоки
-        //     byte[][] encryptedBlocks = new byte[blockCount][];
-        //     for (int i = 0; i < blockCount; i++)
-        //     {
-        //         encryptedBlocks[i] = new byte[blockSize];
-        //         Array.Copy(data, i * blockSize, encryptedBlocks[i], 0, blockSize);
-        //     }
-
-
-        //     byte[][] decryptedBlocks = new byte[blockCount][];
-        //     var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
-        //     var decryptLock = new object(); 
-
-        //     Parallel.For(0, blockCount, options, i =>
-        //     {
-        //         // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId} обрабатывает блок {i}");
-        //         byte[] block;
-        //         lock (decryptLock)
-        //         {
-        //             block = (byte[])_algorithm.DecryptBlock(encryptedBlocks[i]).Clone();
-        //         }
-        //         decryptedBlocks[i] = block;
-        //     });
-
-        //     // Последовательно применяем XOR
-        //     byte[] previousCipherBlock = (byte[])_initializationVector.Clone();
-        //     for (int i = 0; i < blockCount; i++)
-        //     {
-        //         for (int j = 0; j < blockSize; j++)
-        //         {
-        //             result[i * blockSize + j] = (byte)(decryptedBlocks[i][j] ^ previousCipherBlock[j]);
-        //         }
-        //         previousCipherBlock = encryptedBlocks[i];
-        //     }
-
-        //     return result;
-        // }
-
+         /// <summary>
+        /// Шифрует данные в режиме Cipher Block Chaining (CBC).
+        /// Каждый блок открытого текста перед шифрованием XOR-ится с предыдущим блоком шифротекста.
+        /// </summary>
         private byte[] EncryptCBC(byte[] data)
-        {            
+        {
             int blockSize = _blockSize;
             byte[] result = new byte[data.Length];
-            byte[] previousBlock = _feedbackRegister; 
-            
-            // Создаем рабочий буфер ОДИН РАЗ
+            byte[] previousBlock = _feedbackRegister;
+
+
             byte[] block = new byte[blockSize];
 
             for (int i = 0; i < data.Length / blockSize; i++)
             {
                 int offset = i * blockSize;
-                // Переиспользуем рабочий буфер
+
                 Array.Copy(data, offset, block, 0, blockSize);
 
                 for (int j = 0; j < blockSize; j++)
@@ -442,30 +430,30 @@ public async Task DecryptAsync(Stream inputStream, Stream outputStream)
 
                 byte[] encryptedBlock = _algorithm.EncryptBlock(block);
                 Array.Copy(encryptedBlock, 0, result, offset, blockSize);
-                
-                // Обновляем состояние для следующего блока.
-                // encryptedBlock - это новый массив, возвращенный из EncryptBlock,
-                // поэтому здесь простое присваивание безопасно.
+
                 previousBlock = encryptedBlock;
             }
-            
-            _feedbackRegister = previousBlock; 
+
+            _feedbackRegister = previousBlock;
             return result;
         }
 
+        /// <summary>
+        /// Дешифрует данные в режиме Cipher Block Chaining (CBC).
+        /// Каждый расшифрованный блок XOR-ится с предыдущим блоком шифротекста.
+        /// </summary>
         private byte[] DecryptCBC(byte[] data)
         {
             int blockSize = _blockSize;
             byte[] result = new byte[data.Length];
-            byte[] previousBlock = _feedbackRegister; 
+            byte[] previousBlock = _feedbackRegister;
 
-            // Создаем рабочий буфер ОДИН РАЗ
             byte[] encryptedBlock = new byte[blockSize];
 
             for (int i = 0; i < data.Length / blockSize; i++)
             {
                 int offset = i * blockSize;
-                // Переиспользуем рабочий буфер
+
                 Array.Copy(data, offset, encryptedBlock, 0, blockSize);
 
                 byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
@@ -476,495 +464,389 @@ public async Task DecryptAsync(Stream inputStream, Stream outputStream)
                 }
 
                 Array.Copy(decryptedBlock, 0, result, offset, blockSize);
-                
-                // ПРАВИЛЬНОЕ ОБНОВЛЕНИЕ СОСТОЯНИЯ
-                // Мы должны сохранить копию текущего шифроблока,
-                // прежде чем буфер encryptedBlock будет перезаписан на следующей итерации.
+
                 previousBlock = (byte[])encryptedBlock.Clone();
             }
-            _feedbackRegister = previousBlock; 
+            _feedbackRegister = previousBlock;
 
             return result;
         }
 
-
-
+        /// <summary>
+        /// Шифрует данные в режиме Propagating Cipher Block Chaining (PCBC).
+        /// Модификация CBC, где каждый блок открытого текста XOR-ится как с предыдущим блоком открытого текста, так и с предыдущим блоком шифротекста.
+        /// </summary>
         private byte[] EncryptPCBC(byte[] data)
-{
-    int blockSize = _blockSize;
-    byte[] result = new byte[data.Length];
-    var (previousInput, previousOutput) = _pcbcFeedbackRegisters;
-
-    byte[] originalBlock = new byte[blockSize];
-    byte[] blockToEncrypt = new byte[blockSize];
-
-    for (int i = 0; i < data.Length / blockSize; i++)
-    {
-        int offset = i * blockSize;
-        Array.Copy(data, offset, originalBlock, 0, blockSize);
-        Array.Copy(originalBlock, 0, blockToEncrypt, 0, blockSize);
-
-        // *** ИСПРАВЛЕНИЕ ЗДЕСЬ ***
-        byte[] feedback = new byte[blockSize];
-        for (int j = 0; j < blockSize; j++)
         {
-            // Для первого блока previousInput == previousOutput == IV,
-            // но теперь мы явно используем правильный фидбэк.
-            feedback[j] = (byte)(previousInput[j] ^ previousOutput[j]);
+            int blockSize = _blockSize;
+            byte[] result = new byte[data.Length];
+            var (previousInput, previousOutput) = _pcbcFeedbackRegisters;
+
+            byte[] originalBlock = new byte[blockSize];
+            byte[] blockToEncrypt = new byte[blockSize];
+
+            for (int i = 0; i < data.Length / blockSize; i++)
+            {
+                int offset = i * blockSize;
+                Array.Copy(data, offset, originalBlock, 0, blockSize);
+                Array.Copy(originalBlock, 0, blockToEncrypt, 0, blockSize);
+
+
+                byte[] feedback = new byte[blockSize];
+                for (int j = 0; j < blockSize; j++)
+                {
+
+                    feedback[j] = (byte)(previousInput[j] ^ previousOutput[j]);
+                }
+
+                for (int j = 0; j < blockSize; j++)
+                {
+                    blockToEncrypt[j] ^= feedback[j];
+                }
+
+                byte[] encryptedBlock;
+                lock (_algorithmLock)
+                {
+                    encryptedBlock = _algorithm.EncryptBlock(blockToEncrypt);
+                }
+                Array.Copy(encryptedBlock, 0, result, offset, blockSize);
+
+                previousInput = (byte[])originalBlock.Clone();
+                previousOutput = (byte[])encryptedBlock.Clone();
+            }
+
+            _pcbcFeedbackRegisters = (previousInput, previousOutput);
+            return result;
         }
 
-        for (int j = 0; j < blockSize; j++)
-        {
-            blockToEncrypt[j] ^= feedback[j];
-        }
-        
-        // В оригинальной реализации лок был здесь, сохраним его для потокобезопасности
-        byte[] encryptedBlock;
-        lock(_algorithmLock)
-        {
-            encryptedBlock = _algorithm.EncryptBlock(blockToEncrypt);
-        }
-        Array.Copy(encryptedBlock, 0, result, offset, blockSize);
-
-        previousInput = (byte[])originalBlock.Clone();
-        previousOutput = (byte[])encryptedBlock.Clone();
-    }
-    
-    _pcbcFeedbackRegisters = (previousInput, previousOutput);
-    return result;
-}
-
-        // private byte[] DecryptPCBC(byte[] data)
-        // {
-        //     int blockSize = _blockSize;
-        //     byte[] result = new byte[data.Length];
-        //     byte[] previousInput = (byte[])_initializationVector.Clone();
-        //     byte[] previousOutput = (byte[])_initializationVector.Clone();
-
-        //     for (int i = 0; i < data.Length / blockSize; i++)
-        //     {
-        //         int offset = i * blockSize;
-        //         byte[] encryptedBlock = new byte[blockSize];
-        //         Array.Copy(data, offset, encryptedBlock, 0, blockSize);
-
-        //         byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
-
-        //         for (int j = 0; j < blockSize; j++)
-        //         {
-        //             decryptedBlock[j] ^= (byte)(previousInput[j] ^ previousOutput[j]);
-        //         }
-
-        //         Array.Copy(decryptedBlock, 0, result, offset, blockSize);
-
-        //         previousInput = (byte[])decryptedBlock.Clone();
-        //         previousOutput = (byte[])encryptedBlock.Clone();
-        //     }
-
-        //     return result;
-        // }
-
+        /// <summary>
+        /// Дешифрует данные в режиме Propagating Cipher Block Chaining (PCBC).
+        /// </summary>
         private byte[] DecryptPCBC(byte[] data)
-{
-    int blockSize = _blockSize;
-    byte[] result = new byte[data.Length];
-    // Загружаем начальное состояние (IV, IV)
-    var (previousPlaintext, previousCiphertext) = _pcbcFeedbackRegisters;
-
-    // Создаем рабочий буфер для текущего шифроблока ОДИН РАЗ перед циклом
-    byte[] currentCiphertext = new byte[blockSize];
-
-    for (int i = 0; i < data.Length / blockSize; i++)
-    {
-        int offset = i * blockSize;
-        // Копируем текущий шифроблок из входных данных в наш буфер
-        Array.Copy(data, offset, currentCiphertext, 0, blockSize);
-        
-        // 1. Расшифровываем текущий блок
-        byte[] decryptedBlock;
-        lock(_algorithmLock)
         {
-            decryptedBlock = _algorithm.DecryptBlock(currentCiphertext);
+            int blockSize = _blockSize;
+            byte[] result = new byte[data.Length];
+
+            var (previousPlaintext, previousCiphertext) = _pcbcFeedbackRegisters;
+
+
+            byte[] currentCiphertext = new byte[blockSize];
+
+            for (int i = 0; i < data.Length / blockSize; i++)
+            {
+                int offset = i * blockSize;
+
+                Array.Copy(data, offset, currentCiphertext, 0, blockSize);
+
+                byte[] decryptedBlock;
+                lock (_algorithmLock)
+                {
+                    decryptedBlock = _algorithm.DecryptBlock(currentCiphertext);
+                }
+
+                byte[] feedback = new byte[blockSize];
+                for (int j = 0; j < blockSize; j++)
+                {
+                    feedback[j] = (byte)(previousPlaintext[j] ^ previousCiphertext[j]);
+                }
+
+                for (int j = 0; j < blockSize; j++)
+                {
+                    decryptedBlock[j] ^= feedback[j];
+                }
+
+                Array.Copy(decryptedBlock, 0, result, offset, blockSize);
+
+                previousPlaintext = (byte[])decryptedBlock.Clone();
+                previousCiphertext = (byte[])currentCiphertext.Clone();
+            }
+            _pcbcFeedbackRegisters = (previousPlaintext, previousCiphertext);
+            return result;
         }
 
-        // 2. Вычисляем фидбэк из предыдущих блоков
-        // (previousPlaintext XOR previousCiphertext)
-        byte[] feedback = new byte[blockSize];
-        for (int j = 0; j < blockSize; j++)
-        {
-            feedback[j] = (byte)(previousPlaintext[j] ^ previousCiphertext[j]);
-        }
-
-        // 3. Применяем XOR к расшифрованному блоку, чтобы получить итоговый открытый текст
-        for (int j = 0; j < blockSize; j++)
-        {
-            decryptedBlock[j] ^= feedback[j];
-        }
-
-        // Копируем полученный блок открытого текста в результирующий массив
-        Array.Copy(decryptedBlock, 0, result, offset, blockSize);
-        
-        // 4. Обновляем состояние для СЛЕДУЮЩЕЙ итерации:
-        // - "Предыдущим открытым текстом" становится только что полученный блок
-        previousPlaintext = (byte[])decryptedBlock.Clone();
-        // - "Предыдущим шифротекстом" становится текущий блок
-        previousCiphertext = (byte[])currentCiphertext.Clone();
-    }
-    
-    // Сохраняем конечное состояние
-    _pcbcFeedbackRegisters = (previousPlaintext, previousCiphertext);
-    return result;
-}
-
+        /// <summary>
+        /// Шифрует данные в режиме Cipher Feedback (CFB).
+        /// Шифрует регистр обратной связи, XOR-ит результат с открытым текстом, а полученный шифротекст становится новым значением для регистра.
+        /// </summary>
         private byte[] EncryptCFB(byte[] data)
         {
             int blockSize = _blockSize;
             byte[] result = new byte[data.Length];
             byte[] feedback = _feedbackRegister;
 
-            // Создаем буфер ОДИН РАЗ перед циклом
-            byte[] block = new byte[blockSize];
-
-            for (int i = 0; i < data.Length / blockSize; i++)
+            int offset = 0;
+            while (offset < data.Length)
             {
-                int offset = i * blockSize;
-                
-                byte[] encryptedFeedback;
-                lock(_algorithmLock)
+
+                byte[] keystream;
+                lock (_algorithmLock)
                 {
-                    encryptedFeedback = _algorithm.EncryptBlock(feedback);
+                    keystream = _algorithm.EncryptBlock(feedback);
                 }
 
-                // Переиспользуем буфер
-                Array.Copy(data, offset, block, 0, blockSize);
-                
-                for (int j = 0; j < blockSize; j++)
+                int bytesToProcess = Math.Min(blockSize, data.Length - offset);
+
+                for (int j = 0; j < bytesToProcess; j++)
                 {
-                    result[offset + j] = (byte)(block[j] ^ encryptedFeedback[j]);
+                    result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
                 }
-                
-                Array.Copy(result, offset, feedback, 0, blockSize);
+
+                byte[] nextFeedback = new byte[blockSize];
+                Array.Copy(result, offset, nextFeedback, 0, bytesToProcess);
+                feedback = nextFeedback;
+                offset += blockSize;
             }
-            
+
             _feedbackRegister = feedback;
             return result;
         }
 
+        /// <summary>
+        /// Дешифрует данные в режиме Cipher Feedback (CFB).
+        /// Операция дешифрования аналогична шифрованию, но регистр обратной связи заполняется шифротекстом.
+        /// </summary>
         private byte[] DecryptCFB(byte[] data)
         {
             int blockSize = _blockSize;
             byte[] result = new byte[data.Length];
             byte[] feedback = _feedbackRegister;
 
-            // Создаем буфер ОДИН РАЗ перед циклом
-            byte[] encryptedBlock = new byte[blockSize];
-
-            for (int i = 0; i < data.Length / blockSize; i++)
+            int offset = 0;
+            while (offset < data.Length)
             {
-                int offset = i * blockSize;
-                
-                byte[] encryptedFeedback;
-                lock(_algorithmLock)
-                {
-                    encryptedFeedback = _algorithm.EncryptBlock(feedback);
-                }
-                
-                // Переиспользуем буфер
-                Array.Copy(data, offset, encryptedBlock, 0, blockSize);
 
-                for (int j = 0; j < blockSize; j++)
+                byte[] keystream;
+                lock (_algorithmLock)
                 {
-                    result[offset + j] = (byte)(encryptedBlock[j] ^ encryptedFeedback[j]);
+                    keystream = _algorithm.EncryptBlock(feedback);
                 }
-                
-                Array.Copy(encryptedBlock, 0, feedback, 0, blockSize);
+
+                int bytesToProcess = Math.Min(blockSize, data.Length - offset);
+
+                byte[] nextFeedback = new byte[blockSize];
+                Array.Copy(data, offset, nextFeedback, 0, bytesToProcess);
+
+                for (int j = 0; j < bytesToProcess; j++)
+                {
+                    result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
+                }
+
+                feedback = nextFeedback;
+
+                offset += blockSize;
             }
-            
+
             _feedbackRegister = feedback;
             return result;
         }
-        // private byte[] EncryptOFB(byte[] data)
-        // {
-        //     int blockSize = _blockSize;
-        //     int blockCount = data.Length / blockSize;
-        //     byte[] result = new byte[data.Length];
-
-        //     byte[] iv = (byte[])_initializationVector.Clone();
-        //     byte[][] keystreamBlocks = new byte[blockCount][];
-
-        //     var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
-        //     var lockObj = new object();
-
-
-        //     Parallel.For(0, blockCount, options, i =>
-        //     {
-        //         // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId}: блок {i}, {i+1} Encrypt");
-        //         byte[] tempIv = (byte[])iv.Clone();
-
-        //         for (int j = 0; j < i; j++)
-        //         {
-        //             lock (lockObj)
-        //             {
-        //                 tempIv = _algorithm.EncryptBlock(tempIv);
-        //             }
-        //         }
-        //         lock (lockObj)
-        //         {
-        //             keystreamBlocks[i] = _algorithm.EncryptBlock(tempIv);
-        //         }
-        //     });
-
-
-        //     Parallel.For(0, blockCount, options, i =>
-        //     {
-        //         int offset = i * blockSize;
-        //         for (int j = 0; j < blockSize; j++)
-        //         {
-        //             result[offset + j] = (byte)(data[offset + j] ^ keystreamBlocks[i][j]);
-        //         }
-        //     });
-
-        //     return result;
-        // }
         
-        // В файле CryptoLib/Modes/CipherContext.cs
-
-private byte[] EncryptOFB(byte[] data)
-{
-    int blockSize = _blockSize;
-    byte[] result = new byte[data.Length];
-    // Загружаем начальное состояние (IV)
-    byte[] feedback = _feedbackRegister;
-
-    int offset = 0;
-    // Используем цикл while, чтобы пройти по ВСЕМ данным,
-    // включая последний неполный блок.
-    while (offset < data.Length)
-    {
-        // 1. Генерируем следующий блок потока ключей, шифруя фидбэк
-        byte[] keystream;
-        lock (_algorithmLock)
+        /// <summary>
+        /// Шифрует данные в режиме Output Feedback (OFB), превращая блочный шифр в генератор потока ключей.
+        /// Последовательно шифрует регистр обратной связи и XOR-ит результат с открытым текстом.
+        /// </summary>
+        private byte[] EncryptOFB(byte[] data)
         {
-            keystream = _algorithm.EncryptBlock(feedback);
-        }
-        
-        // 2. Важно: фидбэком для СЛЕДУЮЩЕЙ итерации становится
-        // только что сгенерированный блок потока ключей.
-        feedback = keystream;
+            int blockSize = _blockSize;
+            byte[] result = new byte[data.Length];
 
-        // 3. Определяем, сколько байт нужно обработать на этой итерации
-        // (это будет полный блок, либо "остаток" в самом конце)
-        int bytesToProcess = Math.Min(blockSize, data.Length - offset);
-        
-        // 4. Применяем XOR к данным
-        for (int j = 0; j < bytesToProcess; j++)
-        {
-            result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
-        }
-        
-        // 5. Переходим к следующему блоку
-        offset += blockSize;
-    }
-    
-    // Сохраняем конечное состояние фидбэка
-    _feedbackRegister = feedback;
-    return result;
-}
+            byte[] feedback = _feedbackRegister;
 
+            int offset = 0;
+
+            while (offset < data.Length)
+            {
+
+                byte[] keystream;
+                lock (_algorithmLock)
+                {
+                    keystream = _algorithm.EncryptBlock(feedback);
+                }
+
+                feedback = keystream;
+
+                int bytesToProcess = Math.Min(blockSize, data.Length - offset);
+
+                for (int j = 0; j < bytesToProcess; j++)
+                {
+                    result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
+                }
+
+                offset += blockSize;
+            }
+
+            _feedbackRegister = feedback;
+            return result;
+        }
+
+        /// <summary>
+        /// Дешифрует данные в режиме Output Feedback (OFB).
+        /// Операция полностью идентична шифрованию, так как представляет собой XOR с тем же потоком ключей.
+        /// </summary>
         private byte[] DecryptOFB(byte[] data)
         {
             return EncryptOFB(data);
         }
 
-        // private byte[] EncryptCTR(byte[] data)
-        // {
-        //     int blockSize = _blockSize;
-        //     int blockCount = data.Length / blockSize;
-        //     byte[] result = new byte[data.Length];
-
-        //     var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
-
-
-        //     Parallel.For(0, blockCount, options, i =>
-        //     {
-        //         // Console.WriteLine($"Поток {Thread.CurrentThread.ManagedThreadId}: CTR блок {i}");
-
-        //         byte[] blockCounter = (byte[])_initializationVector.Clone();
-        //         if (i > 0) IncrementCounterNtimes(blockCounter, i);
-
-
-        //         byte[] keystream = _algorithm.EncryptBlock(blockCounter);
-
-        //         int offset = i * blockSize;
-        //         for (int j = 0; j < blockSize; j++)
-        //         {
-        //             result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
-        //         }
-        //     });
-
-        //     return result;
-        // }
-        
+        /// <summary>
+        /// Шифрует данные в режиме Counter (CTR).
+        /// Генерирует поток ключей путем шифрования последовательных значений счетчика.
+        /// </summary>
         private byte[] EncryptCTR(byte[] data)
-{
-    int blockSize = _blockSize;
-    
-    // --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
-    // Старая строка: int blockCount = data.Length / blockSize;
-    // Новая строка: вычисляем количество блоков с округлением вверх.
-    // (data.Length + blockSize - 1) / blockSize - это стандартный трюк
-    // для целочисленного деления с округлением вверх.
-    int blockCount = (data.Length + blockSize - 1) / blockSize;
-
-    byte[] result = new byte[data.Length];
-
-    Parallel.For(0, blockCount,
-        () => (new byte[blockSize], new byte[8]),
-        (i, loopState, localBuffers) =>
         {
-            var (blockCounter, incrementedBytes) = localBuffers;
+            int blockSize = _blockSize;
 
-            Array.Copy(_initializationVector, blockCounter, blockSize);
+            int blockCount = (data.Length + blockSize - 1) / blockSize;
 
-            long counterValue = BitConverter.ToInt64(blockCounter, blockCounter.Length - 8);
-            counterValue += (long)i;
+            byte[] result = new byte[data.Length];
 
-            BitConverter.TryWriteBytes(incrementedBytes, counterValue);
-            Array.Copy(incrementedBytes, 0, blockCounter, blockCounter.Length - 8, 8);
-
-            byte[] keystream = _algorithm.EncryptBlock(blockCounter);
-
-            int offset = i * blockSize;
-            for (int j = 0; j < blockSize; j++)
-            {
-                // Важная проверка, чтобы не выйти за пределы массива данных
-                // для последнего неполного блока.
-                if (offset + j < data.Length)
+            Parallel.For(0, blockCount,
+                () => (new byte[blockSize], new byte[8]),
+                (i, loopState, localBuffers) =>
                 {
-                    result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
-                }
-            }
-            
-            return localBuffers;
-        },
-        _ => { });
+                    var (blockCounter, incrementedBytes) = localBuffers;
 
-    return result;
-}
+                    Array.Copy(_initializationVector, blockCounter, blockSize);
 
-        private void IncrementCounterNtimes(byte[] counter, int times)
-        {
-            for (int t = 0; t < times; t++)
-                IncrementCounter(counter);
+                    long counterValue = BitConverter.ToInt64(blockCounter, blockCounter.Length - 8);
+                    counterValue += (long)i;
+
+                    BitConverter.TryWriteBytes(incrementedBytes, counterValue);
+                    Array.Copy(incrementedBytes, 0, blockCounter, blockCounter.Length - 8, 8);
+
+                    byte[] keystream = _algorithm.EncryptBlock(blockCounter);
+
+                    int offset = i * blockSize;
+                    for (int j = 0; j < blockSize; j++)
+                    {
+                        if (offset + j < data.Length)
+                        {
+                            result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
+                        }
+                    }
+
+                    return localBuffers;
+                },
+                _ => { });
+
+            return result;
         }
 
+        /// <summary>
+        /// Дешифрует данные в режиме Counter (CTR).
+        /// </summary>
         private byte[] DecryptCTR(byte[] data)
         {
             return EncryptCTR(data);
         }
 
-       private byte[] EncryptRandomDelta(byte[] data)
+        /// <summary>
+        /// Шифрует данные в режиме Random Delta.
+        /// Кастомный режим, где каждый блок XOR-ится с псевдослучайной "дельтой", сгенерированной на основе IV и номера блока.
+        /// </summary>
+        private byte[] EncryptRandomDelta(byte[] data)
         {
             int blockSize = _blockSize;
             int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
-            
+
             Parallel.For(0, blockCount, i =>
             {
                 int offset = i * blockSize;
                 byte[] delta = ComputeDeltaForBlock(_initializationVector, i);
-                
+
                 byte[] block = new byte[blockSize];
                 Array.Copy(data, offset, block, 0, blockSize);
-                
+
                 for (int j = 0; j < blockSize; j++)
                 {
                     block[j] ^= delta[j];
                 }
-                
-                // Блокировка убрана
+
                 byte[] encryptedBlock = _algorithm.EncryptBlock(block);
 
                 Array.Copy(encryptedBlock, 0, result, offset, blockSize);
             });
-            
+
             return result;
         }
 
+        /// <summary>
+        /// Генерирует псевдослучайную "дельту" для указанного номера блока.
+        /// </summary>
         private byte[] ComputeDeltaForBlock(byte[] initialDelta, int blockIndex)
         {
             byte[] delta = (byte[])initialDelta.Clone();
-            int seed = BitConverter.ToInt32(initialDelta, 0) ^ blockIndex; // Фиксированный seed
+            int seed = BitConverter.ToInt32(initialDelta, 0) ^ blockIndex;
             Random random = new Random(seed);
             random.NextBytes(delta);
             return delta;
         }
 
+        /// <summary>
+        /// Дешифрует данные в режиме Random Delta.
+        /// </summary>
         private byte[] DecryptRandomDelta(byte[] data)
         {
             int blockSize = _blockSize;
             int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
-            
+
             Parallel.For(0, blockCount, i =>
             {
                 int offset = i * blockSize;
                 byte[] delta = ComputeDeltaForBlock(_initializationVector, i);
-                
+
                 byte[] encryptedBlock = new byte[blockSize];
                 Array.Copy(data, offset, encryptedBlock, 0, blockSize);
-                
-                // Блокировка убрана
+
                 byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
-                
+
                 for (int j = 0; j < blockSize; j++)
                 {
                     result[offset + j] = (byte)(decryptedBlock[j] ^ delta[j]);
                 }
             });
-            
+
             return result;
         }
-        private void IncrementCounter(byte[] counter)
+
+        /// <summary>
+        /// Применяет к данным выбранную схему дополнения (паддинга), чтобы их длина стала кратной размеру блока.
+        /// </summary>
+        private byte[] ApplyPadding(byte[] data, int blockSize)
         {
-            for (int i = counter.Length - 1; i >= 0; i--)
+            int paddingLength = blockSize - (data.Length % blockSize);
+            return _padding switch
             {
-                if (++counter[i] != 0)
-                    break;
-            }
+                PaddingMode.Zeros => ApplyZerosPadding(data, paddingLength),
+                PaddingMode.PKCS7 => ApplyPKCS7Padding(data, paddingLength),
+                PaddingMode.ANSIX923 => ApplyAnsiX923Padding(data, paddingLength),
+                PaddingMode.ISO10126 => ApplyIso10126Padding(data, paddingLength),
+                _ => throw new NotSupportedException($"Режим паддинга {_padding} не поддерживается")
+            };
         }
 
-        private byte[] ApplyPadding(byte[] data, int blockSize)
-{
-    int paddingLength = blockSize - (data.Length % blockSize);
-    // Теперь, если data.Length % blockSize == 0, paddingLength будет равен blockSize.
-    // Это гарантирует, что мы всегда добавляем дополнение.
-
-    // Ваш существующий switch-блок остается здесь
-    return _padding switch
-    {
-        PaddingMode.Zeros => ApplyZerosPadding(data, paddingLength),
-        PaddingMode.PKCS7 => ApplyPKCS7Padding(data, paddingLength),
-        PaddingMode.ANSIX923 => ApplyAnsiX923Padding(data, paddingLength),
-        PaddingMode.ISO10126 => ApplyIso10126Padding(data, paddingLength),
-        _ => throw new NotSupportedException($"Режим паддинга {_padding} не поддерживается")
-    };
-}
-
+        /// <summary>
+        /// Удаляет из данных дополнение (паддинг) в соответствии с выбранной схемой.
+        /// </summary>
         private byte[] RemovePadding(byte[] data)
-{
-    if (data.Length == 0 || data.Length % _blockSize != 0)
-        return data;
+        {
+            if (data.Length == 0 || data.Length % _blockSize != 0)
+                return data;
 
-    return _padding switch
-    {
-        PaddingMode.Zeros => RemoveZerosPadding(data),
-        PaddingMode.PKCS7 => RemovePKCS7Padding(data),
-        PaddingMode.ANSIX923 => RemoveAnsiX923Padding(data),
-        PaddingMode.ISO10126 => RemoveIso10126Padding(data),
-        _ => throw new NotSupportedException($"Режим паддинга {_padding} не поддерживается")
-    };
-}
+            return _padding switch
+            {
+                PaddingMode.Zeros => RemoveZerosPadding(data),
+                PaddingMode.PKCS7 => RemovePKCS7Padding(data),
+                PaddingMode.ANSIX923 => RemoveAnsiX923Padding(data),
+                PaddingMode.ISO10126 => RemoveIso10126Padding(data),
+                _ => throw new NotSupportedException($"Режим паддинга {_padding} не поддерживается")
+            };
+        }
 
+        /// <summary>
+        /// Дополняет данные нулями.
+        /// </summary>
         private byte[] ApplyZerosPadding(byte[] data, int paddingLength)
         {
             byte[] result = new byte[data.Length + paddingLength];
@@ -972,11 +854,17 @@ private byte[] EncryptOFB(byte[] data)
             return result;
         }
 
+        /// <summary>
+        /// Удаляет дополнение нулями.
+        /// </summary>
         private byte[] RemoveZerosPadding(byte[] data)
         {
             return data;
         }
 
+        /// <summary>
+        /// Применяет паддинг по стандарту PKCS#7. Каждый байт дополнения равен общему числу добавленных байт.
+        /// </summary>
         private byte[] ApplyPKCS7Padding(byte[] data, int paddingLength)
         {
             byte[] result = new byte[data.Length + paddingLength];
@@ -988,26 +876,31 @@ private byte[] EncryptOFB(byte[] data)
             return result;
         }
 
+        /// <summary>
+        /// Удаляет паддинг по стандарту PKCS#7.
+        /// </summary>
         private byte[] RemovePKCS7Padding(byte[] data)
         {
             if (data.Length == 0) return data;
-            
+
             byte paddingValue = data[^1];
-            
-            // Убираем проверку на 0 - в PKCS7 padding value не может быть 0
+
             if (paddingValue > data.Length) return data;
-            
+
             for (int i = data.Length - paddingValue; i < data.Length; i++)
             {
                 if (data[i] != paddingValue)
                     return data;
             }
-            
+
             byte[] result = new byte[data.Length - paddingValue];
             Array.Copy(data, result, result.Length);
             return result;
         }
 
+        /// <summary>
+        /// Применяет паддинг по стандарту ANSI X9.23. Добавляются нули, а последний байт равен числу добавленных байт.
+        /// </summary>
         private byte[] ApplyAnsiX923Padding(byte[] data, int paddingLength)
         {
             byte[] result = new byte[data.Length + paddingLength];
@@ -1016,46 +909,56 @@ private byte[] EncryptOFB(byte[] data)
             return result;
         }
 
+        /// <summary>
+        /// Удаляет паддинг по стандарту ANSI X9.23.
+        /// </summary>
         private byte[] RemoveAnsiX923Padding(byte[] data)
         {
             if (data.Length == 0) return data;
-            
+
             byte paddingValue = data[^1];
             if (paddingValue == 0 || paddingValue > data.Length) return data;
-            
+
             for (int i = data.Length - paddingValue; i < data.Length - 1; i++)
             {
                 if (data[i] != 0)
                     return data;
             }
-            
+
             byte[] result = new byte[data.Length - paddingValue];
             Array.Copy(data, result, result.Length);
             return result;
         }
 
+        /// <summary>
+        /// Применяет паддинг по стандарту ISO 10126. Добавляются случайные байты, а последний байт равен числу добавленных байт.
+        /// </summary>
         private byte[] ApplyIso10126Padding(byte[] data, int paddingLength)
         {
             byte[] result = new byte[data.Length + paddingLength];
             Array.Copy(data, result, data.Length);
-            
+
             Random random = new Random();
             for (int i = data.Length; i < result.Length - 1; i++)
             {
                 result[i] = (byte)random.Next(256);
             }
-            
+
             result[^1] = (byte)paddingLength;
             return result;
         }
 
+
+        /// <summary>
+        /// Удаляет паддинг по стандарту ISO 10126.
+        /// </summary>
         private byte[] RemoveIso10126Padding(byte[] data)
         {
             if (data.Length == 0) return data;
-            
+
             byte paddingValue = data[^1];
             if (paddingValue == 0 || paddingValue > data.Length) return data;
-            
+
             byte[] result = new byte[data.Length - paddingValue];
             Array.Copy(data, result, result.Length);
             return result;

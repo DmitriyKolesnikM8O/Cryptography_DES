@@ -1,11 +1,5 @@
-using System;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using CryptoLib.Algorithms.DES;
-using CryptoLib.Interfaces;
 using CryptoLib.Modes;
-using Xunit;
 
 /*
 1. DESAlgorithm_EncryptDecrypt - шифрует ли вообще
@@ -34,15 +28,15 @@ namespace CryptoTests
         [Fact]
         public void DESAlgorithm_EncryptDecrypt_ShouldReturnOriginalData()
         {
-            // Arrange
+            
             var des = new DESAlgorithm();
             des.SetRoundKeys(_testKey);
 
-            // Act
+            
             byte[] encrypted = des.EncryptBlock(_testData);
             byte[] decrypted = des.DecryptBlock(encrypted);
 
-            // Assert
+            
             Assert.Equal(_testData, decrypted);
         }
 
@@ -54,19 +48,19 @@ namespace CryptoTests
         [Fact]
         public async Task CipherContext_ECB_Mode_ShouldEncryptDecrypt()
         {
-            // Arrange
+            
             var context = new CipherContext(_testKey, CipherMode.ECB, PaddingMode.PKCS7, null);
 
-            byte[] testData = new byte[] { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98 };
+            byte[] testData = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98];
 
-            // Act
+            
             byte[] outputEncrypt = new byte[100];
             await context.EncryptAsync(testData, outputEncrypt);
 
             byte[] outputDecrypt = new byte[100];
             await context.DecryptAsync(outputEncrypt, outputDecrypt);
 
-            // Assert
+            
             Assert.Equal(testData, outputDecrypt.Take(testData.Length).ToArray());
         }
 
@@ -78,19 +72,19 @@ namespace CryptoTests
         [Fact]
         public async Task CipherContext_CBC_Mode_ShouldEncryptDecrypt()
         {
-            // Arrange
+            
             var context = new CipherContext(_testKey, CipherMode.CBC, PaddingMode.PKCS7, _testIV);
 
-            byte[] testData = new byte[] { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98 };
+            byte[] testData = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98];
 
-            // Act
+            
             byte[] outputEncrypt = new byte[100];
             await context.EncryptAsync(testData, outputEncrypt);
 
             byte[] outputDecrypt = new byte[100];
             await context.DecryptAsync(outputEncrypt, outputDecrypt);
 
-            // Assert
+            
             Assert.Equal(testData, outputDecrypt.Take(testData.Length).ToArray());
         }
 
@@ -102,20 +96,20 @@ namespace CryptoTests
         [Fact]
         public async Task CipherContext_WithRandomData_ShouldWorkCorrectly()
         {
-            // Arrange
+            
             var context = new CipherContext(_testKey, CipherMode.CBC, PaddingMode.PKCS7, _testIV);
             Random random = new(42);
             byte[] randomData = new byte[1024]; // 1KB случайных данных
             random.NextBytes(randomData);
 
-            // Act
+            
             byte[] encrypted = new byte[1100];
             await context.EncryptAsync(randomData, encrypted);
 
             byte[] decrypted = new byte[1100];
             await context.DecryptAsync(encrypted, decrypted);
 
-            // Assert
+            
             Assert.Equal(randomData, decrypted.Take(randomData.Length).ToArray());
         }
 
@@ -127,7 +121,7 @@ namespace CryptoTests
         [Fact]
         public async Task CipherContext_FileEncryption_ShouldWork()
         {
-            // Arrange
+            
             var context = new CipherContext(_testKey, CipherMode.CBC, PaddingMode.PKCS7, _testIV);
 
             string testText = "Hello, DES Encryption! This is a test message for file encryption.";
@@ -135,22 +129,22 @@ namespace CryptoTests
             string encryptedFile = "test_encrypted.dat";
             string decryptedFile = "test_decrypted.txt";
 
-            // Создаем тестовый файл
+            
             await File.WriteAllTextAsync(inputFile, testText);
 
             try
             {
-                // Act
+                
                 await context.EncryptAsync(inputFile, encryptedFile);
                 await context.DecryptAsync(encryptedFile, decryptedFile);
 
-                // Assert
+                
                 string decryptedText = await File.ReadAllTextAsync(decryptedFile);
                 Assert.Equal(testText, decryptedText);
             }
             finally
             {
-                // Cleanup
+                
                 if (File.Exists(inputFile)) File.Delete(inputFile);
                 if (File.Exists(encryptedFile)) File.Delete(encryptedFile);
                 if (File.Exists(decryptedFile)) File.Delete(decryptedFile);
@@ -172,20 +166,20 @@ namespace CryptoTests
         [InlineData(CipherMode.RandomDelta)]
         public async Task AllCipherModes_ShouldWorkCorrectly(CipherMode mode)
         {
-            // Arrange
-            byte[] iv = mode == CipherMode.ECB ? null : _testIV;
+            
+            byte[]? iv = mode == CipherMode.ECB ? null : _testIV;
             var context = new CipherContext(_testKey, mode, PaddingMode.PKCS7, iv);
 
-            byte[] testData = new byte[] { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98 };
+            byte[] testData = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98];
 
-            // Act
+            
             byte[] encrypted = new byte[100];
             await context.EncryptAsync(testData, encrypted);
 
             byte[] decrypted = new byte[100];
             await context.DecryptAsync(encrypted, decrypted);
 
-            // Assert
+            
             Assert.Equal(testData, decrypted.Take(testData.Length).ToArray());
         }
 
@@ -201,19 +195,19 @@ namespace CryptoTests
         [InlineData(PaddingMode.ISO10126)]
         public async Task AllPaddingModes_ShouldWorkCorrectly(PaddingMode padding)
         {
-            // Arrange
+            
             var context = new CipherContext(_testKey, CipherMode.CBC, padding, _testIV);
 
-            byte[] testData = new byte[] { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
+            byte[] testData = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF];
 
-            // Act
+            
             byte[] encrypted = new byte[100];
             await context.EncryptAsync(testData, encrypted);
 
             byte[] decrypted = new byte[100];
             await context.DecryptAsync(encrypted, decrypted);
 
-            // Assert
+            
             Assert.Equal(testData, decrypted.Take(testData.Length).ToArray());
         }
 

@@ -1,8 +1,15 @@
 namespace CryptoLib.Algorithms.DES
 {
+    /// <summary>
+    /// Статический класс, содержащий все стандартные таблицы констант, используемые в алгоритме DES.
+    /// Эти таблицы определяют все перестановки и замены, выполняемые в процессе шифрования.
+    /// </summary>
     public static class DESTables
     {
-        // IP - Initial Permutation
+        /// <summary>
+        /// IP - Начальная перестановка (Initial Permutation).
+        /// Применяется к каждому 64-битному блоку открытого текста в самом начале шифрования.
+        /// </summary>
         public static readonly int[] IP = {
             58, 50, 42, 34, 26, 18, 10, 2,
             60, 52, 44, 36, 28, 20, 12, 4,
@@ -14,7 +21,10 @@ namespace CryptoLib.Algorithms.DES
             63, 55, 47, 39, 31, 23, 15, 7
         };
 
-        // FP - Final Permutation (inverse of IP)
+        /// <summary>
+        /// FP - Конечная перестановка (Final Permutation).
+        /// Является обратной к начальной перестановке (IP) и применяется к 64-битному блоку в конце шифрования.
+        /// </summary>
         public static readonly int[] FP = {
             40, 8, 48, 16, 56, 24, 64, 32,
             39, 7, 47, 15, 55, 23, 63, 31,
@@ -26,7 +36,10 @@ namespace CryptoLib.Algorithms.DES
             33, 1, 41, 9, 49, 17, 57, 25
         };
 
-        // PC1 - Permuted Choice 1 (Key transformation)
+        /// <summary>
+        /// PC1 - Выборочная перестановка 1 (Permuted Choice 1).
+        /// Применяется к 64-битному ключу для отбрасывания 8 битов четности и перестановки оставшихся 56 бит.
+        /// </summary>
         public static readonly int[] PC1 = {
             57, 49, 41, 33, 25, 17, 9,
             1, 58, 50, 42, 34, 26, 18,
@@ -38,7 +51,10 @@ namespace CryptoLib.Algorithms.DES
             21, 13, 5, 28, 20, 12, 4
         };
 
-        // PC2 - Permuted Choice 2 (Key compression)
+        /// <summary>
+        /// PC2 - Выборочная перестановка 2 (Permuted Choice 2).
+        /// Применяется к 56-битному сдвинутому ключу для его сжатия до 48-битного раундового ключа.
+        /// </summary>
         public static readonly int[] PC2 = {
             14, 17, 11, 24, 1, 5,
             3, 28, 15, 6, 21, 10,
@@ -50,7 +66,10 @@ namespace CryptoLib.Algorithms.DES
             46, 42, 50, 36, 29, 32
         };
 
-        // E - Expansion permutation
+        /// <summary>
+        /// E - Расширяющая перестановка (Expansion permutation).
+        /// Используется в раундовой функции для расширения 32-битной правой половины блока до 48 бит.
+        /// </summary>
         public static readonly int[] E = {
             32, 1, 2, 3, 4, 5,
             4, 5, 6, 7, 8, 9,
@@ -62,7 +81,10 @@ namespace CryptoLib.Algorithms.DES
             28, 29, 30, 31, 32, 1
         };
 
-        // P - Permutation function
+        /// <summary>
+        /// P - Перестановка (Permutation function).
+        /// Применяется к 32-битному результату S-блоков в конце раундовой функции.
+        /// </summary>
         public static readonly int[] P = {
             16, 7, 20, 21,
             29, 12, 28, 17,
@@ -74,12 +96,18 @@ namespace CryptoLib.Algorithms.DES
             22, 11, 4, 25
         };
 
-        // Number of left shifts per round
+        /// <summary>
+        /// Таблица циклических сдвигов.
+        /// Указывает, на сколько бит влево сдвигаются 28-битные половины ключа в каждом из 16 раундов.
+        /// </summary>
         public static readonly int[] SHIFTS = {
             1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1
         };
 
-        // S-Boxes
+        /// <summary>
+        /// S-блоки (S-Boxes) - таблицы замен.
+        /// Массив содержит 8 S-блоков, каждый из которых представляет собой таблицу 4x16.
+        /// </summary>
         public static readonly int[,,] S_BOX = {
             // S1
             {
