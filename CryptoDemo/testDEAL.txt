@@ -1,2 +1,1 @@
-DEAL
-TEST
+Hello, this is secret message for encryption demo! DEAL-128

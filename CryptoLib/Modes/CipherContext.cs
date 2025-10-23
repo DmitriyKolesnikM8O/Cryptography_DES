@@ -192,96 +192,99 @@ namespace CryptoLib.Modes
             await DecryptAsync(inputFileStream, outputFileStream); // Делегируем потоковой версии
         }
 
-        // НОВЫЕ ОСНОВНЫЕ МЕТОДЫ
-        public async Task EncryptAsync(Stream inputStream, Stream outputStream)
+        
+
+public async Task EncryptAsync(Stream inputStream, Stream outputStream)
+{
+    InitializeState();
+    const int bufferSize = 65536; 
+    byte[] buffer = new byte[bufferSize];
+    int bytesRead;
+
+    while ((bytesRead = await inputStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+    {
+        bool isLastChunk = bytesRead < bufferSize;
+
+        byte[] chunkToEncrypt;
+        if (isLastChunk)
         {
-            InitializeState();
-            const int bufferSize = 65536; 
-            byte[] buffer = new byte[bufferSize];
-            int bytesRead;
-
-            while ((bytesRead = await inputStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+            byte[] finalData = new byte[bytesRead];
+            Array.Copy(buffer, finalData, bytesRead);
+            
+            // --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
+            if (_mode == CipherMode.CTR)
             {
-                // Проверяем, является ли этот чанк последним.
-                // Самый надежный способ - если мы прочитали меньше данных, чем размер буфера.
-                bool isLastChunk = bytesRead < bufferSize;
-
-                byte[] chunkToEncrypt;
-                if (isLastChunk)
-                {
-                    // Если чанк последний, мы должны его обрезать до реального размера и применить паддинг.
-                    byte[] finalData = new byte[bytesRead];
-                    Array.Copy(buffer, finalData, bytesRead);
-                    chunkToEncrypt = ApplyPadding(finalData, _blockSize);
-                }
-                else
-                {
-                    // Если чанк не последний, он должен быть полным. Шифруем его как есть.
-                    // Никакого паддинга здесь не нужно.
-                    chunkToEncrypt = buffer;
-                }
-                
-                byte[] encryptedChunk = EncryptData(chunkToEncrypt);
-                
-                await outputStream.WriteAsync(encryptedChunk, 0, encryptedChunk.Length);
+                // Для CTR используем данные "как есть", без паддинга
+                chunkToEncrypt = finalData;
+            }
+            else
+            {
+                // Для остальных режимов применяем паддинг как и раньше
+                chunkToEncrypt = ApplyPadding(finalData, _blockSize);
             }
         }
-
-        public async Task DecryptAsync(Stream inputStream, Stream outputStream)
+        else
         {
-            InitializeState();
-            const int bufferSize = 65536;
-            byte[] buffer = new byte[bufferSize];
-            int bytesRead;
+            chunkToEncrypt = buffer;
+        }
+        
+        byte[] encryptedChunk = EncryptData(chunkToEncrypt);
+        
+        await outputStream.WriteAsync(encryptedChunk, 0, encryptedChunk.Length);
+    }
+}
+
+
+public async Task DecryptAsync(Stream inputStream, Stream outputStream)
+{
+    InitializeState();
+    const int bufferSize = 65536;
+    byte[] buffer = new byte[bufferSize];
+    int bytesRead;
+    
+    byte[] previousChunk = new byte[bufferSize];
+    int previousBytesRead = 0;
+
+    previousBytesRead = await inputStream.ReadAsync(previousChunk, 0, previousChunk.Length);
+
+    while (previousBytesRead > 0)
+    {
+        bytesRead = await inputStream.ReadAsync(buffer, 0, buffer.Length);
+
+        if (bytesRead == 0) // Последний блок
+        {
+            byte[] finalChunk = new byte[previousBytesRead];
+            Array.Copy(previousChunk, finalChunk, previousBytesRead);
+
+            byte[] decryptedFinal = DecryptData(finalChunk);
             
-            // Создаем буфер для хранения предыдущего прочитанного блока.
-            // Мы выделяем память ОДИН РАЗ, а не в цикле!
-            byte[] previousChunk = new byte[bufferSize];
-            int previousBytesRead = 0;
-
-            // 1. Читаем самый первый блок в `previousChunk`
-            previousBytesRead = await inputStream.ReadAsync(previousChunk, 0, previousChunk.Length);
-
-            while (previousBytesRead > 0)
+            // --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
+            byte[] resultToWrite;
+            if (_mode == CipherMode.CTR)
             {
-                // 2. Читаем следующий блок в основной `buffer`
-                bytesRead = await inputStream.ReadAsync(buffer, 0, buffer.Length);
-
-                // 3. Проверяем, был ли предыдущий блок последним
-                if (bytesRead == 0)
-                {
-                    // Да, `previousChunk` - это последний блок.
-                    // Обрезаем его до реального размера.
-                    byte[] finalChunk = new byte[previousBytesRead];
-                    Array.Copy(previousChunk, finalChunk, previousBytesRead);
-
-                    // Расшифровываем и удаляем паддинг
-                    byte[] decryptedFinal = DecryptData(finalChunk);
-                    byte[] unpaddedFinal = RemovePadding(decryptedFinal);
-                    await outputStream.WriteAsync(unpaddedFinal, 0, unpaddedFinal.Length);
-                }
-                else
-                {
-                    // А здесь (для промежуточных чанков) была ошибка. ИСПРАВЛЯЕМ:
-            // 1. Создаем массив ТОЧНОГО размера, равного количеству прочитанных байт.
+                // Для CTR результат дешифровки и есть финальный, паддинга нет
+                resultToWrite = decryptedFinal;
+            }
+            else
+            {
+                // Для остальных режимов убираем паддинг
+                resultToWrite = RemovePadding(decryptedFinal);
+            }
+            await outputStream.WriteAsync(resultToWrite, 0, resultToWrite.Length);
+        }
+        else // Промежуточный блок
+        {
             byte[] chunkToDecrypt = new byte[previousBytesRead];
             Array.Copy(previousChunk, chunkToDecrypt, previousBytesRead);
             
-            // 2. Расшифровываем только этот массив, а не весь буфер.
             byte[] decryptedPrevious = DecryptData(chunkToDecrypt);
             await outputStream.WriteAsync(decryptedPrevious, 0, decryptedPrevious.Length);
-                    // // Нет, `previousChunk` - это промежуточный блок.
-                    // // Просто расшифровываем и записываем его.
-                    // byte[] decryptedPrevious = DecryptData(previousChunk);
-                    // await outputStream.WriteAsync(decryptedPrevious, 0, decryptedPrevious.Length);
-                }
-
-                // 4. Текущий блок становится предыдущим для следующей итерации.
-                // Мы не создаем новую память, а просто копируем данные и количество байт.
-                Array.Copy(buffer, previousChunk, bytesRead);
-                previousBytesRead = bytesRead;
-            }
         }
+
+        Array.Copy(buffer, previousChunk, bytesRead);
+        previousBytesRead = bytesRead;
+    }
+}
 
         // эта хуйня вроде не  используется
         // private async Task<byte[]> EncryptDataAsync(byte[] data)
@@ -791,51 +794,51 @@ namespace CryptoLib.Modes
         // }
         
         private byte[] EncryptCTR(byte[] data)
+{
+    int blockSize = _blockSize;
+    
+    // --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
+    // Старая строка: int blockCount = data.Length / blockSize;
+    // Новая строка: вычисляем количество блоков с округлением вверх.
+    // (data.Length + blockSize - 1) / blockSize - это стандартный трюк
+    // для целочисленного деления с округлением вверх.
+    int blockCount = (data.Length + blockSize - 1) / blockSize;
+
+    byte[] result = new byte[data.Length];
+
+    Parallel.For(0, blockCount,
+        () => (new byte[blockSize], new byte[8]),
+        (i, loopState, localBuffers) =>
         {
-            int blockSize = _blockSize;
-            int blockCount = data.Length / blockSize;
-            byte[] result = new byte[data.Length];
+            var (blockCounter, incrementedBytes) = localBuffers;
 
-            Parallel.For(0, blockCount,
-                // localInit: Создаем пару буферов ОДИН РАЗ для КАЖДОГО потока.
-                // Item1: буфер для blockCounter. Item2: буфер для байтов инкремента.
-                () => (new byte[blockSize], new byte[8]),
-                
-                // body: Основная логика, использующая thread-local буферы.
-                (i, loopState, localBuffers) =>
+            Array.Copy(_initializationVector, blockCounter, blockSize);
+
+            long counterValue = BitConverter.ToInt64(blockCounter, blockCounter.Length - 8);
+            counterValue += (long)i;
+
+            BitConverter.TryWriteBytes(incrementedBytes, counterValue);
+            Array.Copy(incrementedBytes, 0, blockCounter, blockCounter.Length - 8, 8);
+
+            byte[] keystream = _algorithm.EncryptBlock(blockCounter);
+
+            int offset = i * blockSize;
+            for (int j = 0; j < blockSize; j++)
+            {
+                // Важная проверка, чтобы не выйти за пределы массива данных
+                // для последнего неполного блока.
+                if (offset + j < data.Length)
                 {
-                    var (blockCounter, incrementedBytes) = localBuffers;
+                    result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
+                }
+            }
+            
+            return localBuffers;
+        },
+        _ => { });
 
-                    // Копируем исходный IV в наш локальный буфер, НЕ создавая новый массив.
-                    Array.Copy(_initializationVector, blockCounter, blockSize);
-
-                    long counterValue = BitConverter.ToInt64(blockCounter, blockCounter.Length - 8);
-                    counterValue += (long)i;
-
-                    // Используем второй буфер, НЕ создавая новый массив.
-                    BitConverter.TryWriteBytes(incrementedBytes, counterValue);
-                    Array.Copy(incrementedBytes, 0, blockCounter, blockCounter.Length - 8, 8);
-
-                    byte[] keystream = _algorithm.EncryptBlock(blockCounter);
-
-                    int offset = i * blockSize;
-                    for (int j = 0; j < blockSize; j++)
-                    {
-                        if (offset + j < data.Length)
-                        {
-                            result[offset + j] = (byte)(data[offset + j] ^ keystream[j]);
-                        }
-                    }
-                    
-                    // Возвращаем буферы для следующей итерации этого же потока.
-                    return localBuffers;
-                },
-                
-                // localFinally: Ничего не делаем при завершении потока.
-                _ => { });
-
-            return result;
-        }
+    return result;
+}
 
         private void IncrementCounterNtimes(byte[] counter, int times)
         {
