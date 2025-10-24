@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("CryptoLib")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+26965a89fceb2e3c4d5b0cc26e866e8eef3e9e88")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+18e3aebe0a320a9162e454fddf1754d030d36d32")]
 [assembly: System.Reflection.AssemblyProductAttribute("CryptoLib")]
 [assembly: System.Reflection.AssemblyTitleAttribute("CryptoLib")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
