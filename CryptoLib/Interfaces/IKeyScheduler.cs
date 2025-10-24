@@ -1,5 +1,3 @@
-using System;
-
 namespace CryptoLib.Interfaces
 {
     /// <summary>

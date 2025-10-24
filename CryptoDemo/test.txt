@@ -1,1 +1,1 @@
-DEAL-192 and Rabbits
+Hello, this is secret message for encryption demo! DEAL-128

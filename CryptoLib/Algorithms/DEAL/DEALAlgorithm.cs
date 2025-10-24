@@ -1,4 +1,3 @@
-using System;
 using CryptoLib.Interfaces;
 
 namespace CryptoLib.Algorithms.DEAL

@@ -3,11 +3,15 @@ namespace CryptoLib.Core
     /// <summary>
     /// Статический класс, предоставляющий утилитарные методы для выполнения битовых перестановок
     /// на основе таблицы перестановок (P-блока).
+    /// Выполняем диффузию - изменение одного бита приводит к изменению как можно большего числа бит в шифротексте
     /// </summary>
     public static class BitPermutation
     {
         /// <summary>
         /// Выполняет битовую перестановку для входного массива байтов и возвращает результат в новом массиве.
+        /// Проходим тут перед началом 16 раундов для начальное (IP) перестановки, после 16 раундов для конечной (FP),
+        /// также расширяем внутри раундовой функции с 32 до 48, переставляем в конце раундовой функции с помощью S таблиц,
+        /// используем при генерации раундовых ключей для выбора 56 из 64 и затем 48 из 56 для каждого раунда.
         /// </summary>
         /// <param name="inputValue">Входной массив байтов, биты которого будут переставляться.</param>
         /// <param name="pBlock">Таблица перестановок (P-блок). Массив, указывающий новые позиции для каждого бита.</param>
@@ -30,7 +34,7 @@ namespace CryptoLib.Core
                 throw new ArgumentException("Input array or P-Block is null in PermutationBytes");
 
             int outputBitLength = pBlock.Length;
-            int outputByteLength = (outputBitLength + 7) / 8;
+            int outputByteLength = (outputBitLength + 7) / 8; //округляем вверх, чтобы не отбрасывать нужное
             byte[] result = new byte[outputByteLength];
 
             PermutationBytes(inputValue, pBlock, result, indexingRule, zeroIndex);
@@ -68,6 +72,7 @@ namespace CryptoLib.Core
             int inputBitLength = inputValue.Length * 8;
             int indexOffset = zeroIndex ? 0 : 1;
 
+            //проверка на корректность данных: что не пытаемся взять блок из места, которого нет
             int minP = int.MaxValue, maxP = int.MinValue;
             for (int i = 0; i < pBlock.Length; i++)
             {
@@ -82,9 +87,16 @@ namespace CryptoLib.Core
 
             Array.Clear(destination, 0, destination.Length);
 
+            // Основной цикл перестановки
+            // i - номер бита в результате
             for (int i = 0; i < pBlock.Length; i++)
             {
+                //номер бита, который должны прочитать, с поправкой на offset
                 int sourceBitIndex = pBlock[i] - indexOffset;
+
+                // дальше читаем и вставляем по переданному правилу
+                // LSB - читаем биты справа налево (10101010 -> номера 76543210)
+                // МSB - читаем биты слева направо (10101010 -> номера 01234567)
                 bool bitValue = indexingRule ?
                     GetBitLSB(inputValue, sourceBitIndex) :
                     GetBitMSB(inputValue, sourceBitIndex);
@@ -106,6 +118,7 @@ namespace CryptoLib.Core
         /// </summary>
         private static bool GetBitLSB(byte[] data, int bitIndex)
         {
+            // bitIndex >> 3 ~ bitIndex / 8; bitIndex & 7 ~ bitIndex % 8
             return (data[bitIndex >> 3] & (1 << (bitIndex & 7))) != 0;
         }
 
@@ -115,6 +128,7 @@ namespace CryptoLib.Core
         /// </summary>
         private static bool GetBitMSB(byte[] data, int bitIndex)
         {
+            // 7 - ... -> инверсия индекса, единственное отличие
             return (data[bitIndex >> 3] & (1 << (7 - (bitIndex & 7)))) != 0;
         }
 

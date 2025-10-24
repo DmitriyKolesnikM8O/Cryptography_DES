@@ -10,15 +10,21 @@ namespace CryptoLib.Modes
     /// </summary>
     public class CipherContext
     {
-        private readonly ISymmetricCipher _algorithm;
-        private readonly CipherMode _mode;
+        //readonly - после выбора в конструкторе нельзя поменять
+        private readonly ISymmetricCipher _algorithm; // DES or DEAL
+        private readonly CipherMode _mode; // выбранный режим
         private readonly object _algorithmLock = new object(); // Для потокобезопасности
         private readonly PaddingMode _padding;
         private readonly byte[] _initializationVector;
         private readonly int _blockSize;
 
         // Регистры состояния для режимов с обратной связью
+        // тут храним инфу о предыдущем обработанном блоке
+        // Plaintext - открытый текст предыдущего блока
+        // Ciphertext - шифротекст предыдущего блока
         private (byte[] Plaintext, byte[] Ciphertext) _pcbcFeedbackRegisters;
+
+        // более простая штука для хранения инфы о предыдущем шаге для CBC, OFB, CFB
         private byte[] _feedbackRegister = default!;
 
         /// <summary>
@@ -27,7 +33,8 @@ namespace CryptoLib.Modes
         /// <param name="key">Секретный ключ для шифрования и дешифрования.</param>
         /// <param name="mode">Режим работы блочного шифра (ECB, CBC, CTR и т.д.).</param>
         /// <param name="padding">Схема дополнения (паддинга) для выравнивания данных по размеру блока.</param>
-        /// <param name="initializationVector">Вектор инициализации (IV)</param>
+        /// <param name="initializationVector">Вектор инициализации (IV). Блок рандомных данных, который перемешивается с первым блоком
+        /// перед шифрованием. Не является секретом, обычно просто записывается в самое начало файла.</param>
         /// <param name="additionalParameters">Дополнительные параметры, например, для явного указания алгоритма ("Algorithm", "DES"/"DEAL").</param>
         public CipherContext(
             byte[] key,
@@ -50,6 +57,8 @@ namespace CryptoLib.Modes
         /// <summary>
         /// Инициализирует или сбрасывает внутреннее состояние (регистры обратной связи) перед началом новой операции шифрования или дешифрования.
         /// Использует вектор инициализации для установки начальных значений.
+        /// Именно тут копируем _initializationVector в обе части кортежа _pcbcFeedbackRegisters
+        /// _pcbcFeedbackRegisters - тут храним инфу о предыдущем обработанном блоке
         /// </summary>
         private void InitializeState()
         {
@@ -143,6 +152,7 @@ namespace CryptoLib.Modes
             if (inputData == null) throw new ArgumentNullException(nameof(inputData));
             if (output == null) throw new ArgumentNullException(nameof(output));
 
+            //асинхронное выполнение кода в фоновом потоке  (await - оператор асинхронности)
             await Task.Run(() =>
             {
                 byte[] paddedData = ApplyPadding(inputData, _blockSize);
@@ -242,7 +252,7 @@ namespace CryptoLib.Modes
 
             while ((bytesRead = await inputStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
             {
-                bool isLastChunk = bytesRead < bufferSize;
+                bool isLastChunk = bytesRead < bufferSize; //является ли прочитанный из потока фрагмент данных последний (да - паддинги)
 
                 byte[] chunkToEncrypt;
                 if (isLastChunk)
@@ -442,32 +452,68 @@ namespace CryptoLib.Modes
         /// Дешифрует данные в режиме Cipher Block Chaining (CBC).
         /// Каждый расшифрованный блок XOR-ится с предыдущим блоком шифротекста.
         /// </summary>
+        // private byte[] DecryptCBC(byte[] data)
+        // {
+        //     int blockSize = _blockSize;
+        //     byte[] result = new byte[data.Length];
+        //     byte[] previousBlock = _feedbackRegister;
+
+        //     byte[] encryptedBlock = new byte[blockSize];
+
+        //     for (int i = 0; i < data.Length / blockSize; i++)
+        //     {
+        //         int offset = i * blockSize;
+
+        //         Array.Copy(data, offset, encryptedBlock, 0, blockSize);
+
+        //         byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
+
+        //         for (int j = 0; j < blockSize; j++)
+        //         {
+        //             decryptedBlock[j] ^= previousBlock[j];
+        //         }
+
+        //         Array.Copy(decryptedBlock, 0, result, offset, blockSize);
+
+        //         previousBlock = (byte[])encryptedBlock.Clone();
+        //     }
+        //     _feedbackRegister = previousBlock;
+
+        //     return result;
+        // }
+
         private byte[] DecryptCBC(byte[] data)
         {
             int blockSize = _blockSize;
+            int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
-            byte[] previousBlock = _feedbackRegister;
 
-            byte[] encryptedBlock = new byte[blockSize];
+            // Создаем временный массив для хранения результатов Decrypt(Cᵢ) для каждого блока.
+            byte[][] decryptedBlocks = new byte[blockCount][];
 
-            for (int i = 0; i < data.Length / blockSize; i++)
+            Parallel.For(0, blockCount, i =>
             {
-                int offset = i * blockSize;
 
-                Array.Copy(data, offset, encryptedBlock, 0, blockSize);
+                byte[] currentCipherBlock = new byte[blockSize];
+                Array.Copy(data, i * blockSize, currentCipherBlock, 0, blockSize);
+                decryptedBlocks[i] = _algorithm.DecryptBlock(currentCipherBlock);
+            });
 
-                byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
+            byte[] previousCipherBlock = _feedbackRegister; // Начинаем с IV
 
+            for (int i = 0; i < blockCount; i++)
+            {
+                byte[] currentDecryptedBlock = decryptedBlocks[i];
+                
                 for (int j = 0; j < blockSize; j++)
                 {
-                    decryptedBlock[j] ^= previousBlock[j];
+                    result[i * blockSize + j] = (byte)(currentDecryptedBlock[j] ^ previousCipherBlock[j]);
                 }
-
-                Array.Copy(decryptedBlock, 0, result, offset, blockSize);
-
-                previousBlock = (byte[])encryptedBlock.Clone();
+                byte[] tempCipherBlock = new byte[blockSize];
+                Array.Copy(data, i * blockSize, tempCipherBlock, 0, blockSize);
+                previousCipherBlock = tempCipherBlock;
             }
-            _feedbackRegister = previousBlock;
+            _feedbackRegister = previousCipherBlock;
 
             return result;
         }

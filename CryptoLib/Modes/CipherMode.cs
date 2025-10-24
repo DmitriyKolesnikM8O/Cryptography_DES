@@ -5,25 +5,53 @@ namespace CryptoLib.Modes
     /// </summary>
     public enum CipherMode
     {
-        /// <summary>Electronic Codebook - Простая замена блоков</summary>
+        /// <summary>
+        /// <para><b>Электронная кодовая книга (Electronic Codebook)</b></para>
+        /// <para>Принцип: Каждый блок открытого текста шифруется независимо от других одним и тем же ключом.</para>
+        /// <para>Формула: Cᵢ = Encrypt(Pᵢ)</para>
+        /// </summary>
         ECB,
         
-        /// <summary>Cipher Block Chaining - Сцепление блоков шифротекста</summary>
+        /// <summary>
+        /// <para><b>Сцепление блоков шифротекста (Cipher Block Chaining)</b></para>
+        /// <para>Принцип: Каждый блок открытого текста перед шифрованием XOR-ится с предыдущим блоком шифротекста.</para>
+        /// <para>Формула: Cᵢ = Encrypt(Pᵢ ⊕ Cᵢ₋₁), где C₀ = IV.</para>
+        /// </summary>
         CBC,
         
-        /// <summary>Propagating Cipher Block Chaining - Распространяющееся сцепление</summary>
+        /// <summary>
+        /// <para><b>Распространяющееся сцепление блоков шифра (Propagating Cipher Block Chaining)</b></para>
+        /// <para>Принцип: Модификация CBC, где каждый блок открытого текста XOR-ится как с предыдущим открытым текстом, так и с предыдущим шифротекстом.</para>
+        /// <para>Формула: Cᵢ = Encrypt(Pᵢ ⊕ Pᵢ₋₁ ⊕ Cᵢ₋₁), где P₀ = C₀ = IV.</para>
+        /// </summary>
         PCBC,
         
-        /// <summary>Cipher Feedback - Обратная связь по шифротексту</summary>
+        /// <summary>
+        /// <para><b>Обратная связь по шифротексту (Cipher Feedback)</b></para>
+        /// <para>Принцип: Превращает блочный шифр в самосинхронизирующийся потоковый шифр. Шифруется предыдущий блок шифротекста, и результат XOR-ится с блоком открытого текста.</para>
+        /// <para>Формула: Cᵢ = Pᵢ ⊕ Encrypt(Cᵢ₋₁), где C₀ = IV.</para>
+        /// </summary>
         CFB,
         
-        /// <summary>Output Feedback - Обратная связь по выходу</summary>
+        /// <summary>
+        /// <para><b>Обратная связь по выходу (Output Feedback)</b></para>
+        /// <para>Принцип: Превращает блочный шифр в синхронный потоковый шифр. Генерирует поток ключей (keystream) путем последовательного шифрования IV и последующих выходных блоков.</para>
+        /// <para>Формула: Oᵢ = Encrypt(Oᵢ₋₁); Cᵢ = Pᵢ ⊕ Oᵢ, где O₀ = IV.</para>
+        /// </summary>
         OFB,
         
-        /// <summary>Counter - Режим счетчика</summary>
+        /// <summary>
+        /// <para><b>Режим счётчика (Counter Mode)</b></para>
+        /// <para>Принцип: Превращает блочный шифр в потоковый шифр. Генерирует поток ключей путем шифрования последовательных значений счётчика (например, Nonce+1, Nonce+2, ...).</para>
+        /// <para>Формула: Cᵢ = Pᵢ ⊕ Encrypt(Nonce + i)</para>
+        /// </summary>
         CTR,
         
-        /// <summary>Random Delta - Случайная дельта</summary>
+        /// <summary>
+        /// <para><b>Режим случайной дельты (Random Delta Mode)</b></para>
+        /// <para>Принцип: Кастомный режим, похожий на ECB, но с добавлением рандомизации. Каждый блок открытого текста перед шифрованием XOR-ится с псевдослучайным значением ("дельтой"), сгенерированным на основе IV и номера блока.</para>
+        /// <para>Формула: Cᵢ = Encrypt(Pᵢ ⊕ Deltaᵢ), где Deltaᵢ = PRNG(IV, i).</para>
+        /// </summary>
         RandomDelta
     }
 }
