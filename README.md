@@ -48,5 +48,4 @@ CryptoLab_DES/
 
 
 TO-DO:
-- что такое IV
-- что это за знак &
+- может xor распар. в decrypt cbc

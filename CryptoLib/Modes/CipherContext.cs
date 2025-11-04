@@ -414,7 +414,7 @@ namespace CryptoLib.Modes
             return result;
         }
 
-         /// <summary>
+        /// <summary>
         /// Шифрует данные в режиме Cipher Block Chaining (CBC).
         /// Каждый блок открытого текста перед шифрованием XOR-ится с предыдущим блоком шифротекста.
         /// </summary>
@@ -448,73 +448,45 @@ namespace CryptoLib.Modes
             return result;
         }
 
-        /// <summary>
-        /// Дешифрует данные в режиме Cipher Block Chaining (CBC).
-        /// Каждый расшифрованный блок XOR-ится с предыдущим блоком шифротекста.
-        /// </summary>
-        // private byte[] DecryptCBC(byte[] data)
-        // {
-        //     int blockSize = _blockSize;
-        //     byte[] result = new byte[data.Length];
-        //     byte[] previousBlock = _feedbackRegister;
-
-        //     byte[] encryptedBlock = new byte[blockSize];
-
-        //     for (int i = 0; i < data.Length / blockSize; i++)
-        //     {
-        //         int offset = i * blockSize;
-
-        //         Array.Copy(data, offset, encryptedBlock, 0, blockSize);
-
-        //         byte[] decryptedBlock = _algorithm.DecryptBlock(encryptedBlock);
-
-        //         for (int j = 0; j < blockSize; j++)
-        //         {
-        //             decryptedBlock[j] ^= previousBlock[j];
-        //         }
-
-        //         Array.Copy(decryptedBlock, 0, result, offset, blockSize);
-
-        //         previousBlock = (byte[])encryptedBlock.Clone();
-        //     }
-        //     _feedbackRegister = previousBlock;
-
-        //     return result;
-        // }
-
         private byte[] DecryptCBC(byte[] data)
         {
             int blockSize = _blockSize;
             int blockCount = data.Length / blockSize;
             byte[] result = new byte[data.Length];
 
-            // Создаем временный массив для хранения результатов Decrypt(Cᵢ) для каждого блока.
-            byte[][] decryptedBlocks = new byte[blockCount][];
-
             Parallel.For(0, blockCount, i =>
             {
-
                 byte[] currentCipherBlock = new byte[blockSize];
                 Array.Copy(data, i * blockSize, currentCipherBlock, 0, blockSize);
-                decryptedBlocks[i] = _algorithm.DecryptBlock(currentCipherBlock);
-            });
 
-            byte[] previousCipherBlock = _feedbackRegister; // Начинаем с IV
+                byte[] decryptedBlock = _algorithm.DecryptBlock(currentCipherBlock);
 
-            for (int i = 0; i < blockCount; i++)
-            {
-                byte[] currentDecryptedBlock = decryptedBlocks[i];
-                
+                int resultOffset = i * blockSize;
+                int prevCipherOffset = (i - 1) * blockSize;
+
                 for (int j = 0; j < blockSize; j++)
                 {
-                    result[i * blockSize + j] = (byte)(currentDecryptedBlock[j] ^ previousCipherBlock[j]);
+                    byte previousCipherByte;
+                    if (i == 0)
+                    {
+                        previousCipherByte = _feedbackRegister[j];
+                    }
+                    else
+                    {
+                        previousCipherByte = data[prevCipherOffset + j];
+                    }
+                    
+                    result[resultOffset + j] = (byte)(decryptedBlock[j] ^ previousCipherByte);
                 }
-                byte[] tempCipherBlock = new byte[blockSize];
-                Array.Copy(data, i * blockSize, tempCipherBlock, 0, blockSize);
-                previousCipherBlock = tempCipherBlock;
-            }
-            _feedbackRegister = previousCipherBlock;
+            });
 
+            if (blockCount > 0)
+            {
+                byte[] lastCipherBlock = new byte[blockSize];
+                Array.Copy(data, (blockCount - 1) * blockSize, lastCipherBlock, 0, blockSize);
+                _feedbackRegister = lastCipherBlock;
+            }
+            
             return result;
         }
 
