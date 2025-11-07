@@ -1,6 +1,6 @@
 Структура:
 
-```text
+```
 CryptoLab_DES/
 │
 ├── CryptoLib/                   # библиотека с реализацией DES/DEAL
@@ -44,8 +44,6 @@ CryptoLab_DES/
 ├── README.md
 │
 └── ...
-````
+```
 
 
-TO-DO:
-- может xor распар. в decrypt cbc

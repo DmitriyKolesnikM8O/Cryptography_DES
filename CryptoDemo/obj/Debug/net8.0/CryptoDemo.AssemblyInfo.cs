@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("CryptoDemo")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3444313950cdeadb594fc74c5eec7588e1bfd2a0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+346afde3dbf4b55d14719bba6cb4d85d12c7aadf")]
 [assembly: System.Reflection.AssemblyProductAttribute("CryptoDemo")]
 [assembly: System.Reflection.AssemblyTitleAttribute("CryptoDemo")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
