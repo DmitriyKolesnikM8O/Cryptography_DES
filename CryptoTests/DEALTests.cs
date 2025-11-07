@@ -239,7 +239,7 @@ namespace CryptoTests
         /// </summary>
         [Theory]
         [InlineData(DEALKeyScheduler.KeyType.KEY_SIZE_128, 6)]
-        [InlineData(DEALKeyScheduler.KeyType.KEY_SIZE_192, 6)]
+        [InlineData(DEALKeyScheduler.KeyType.KEY_SIZE_192, 8)]
         [InlineData(DEALKeyScheduler.KeyType.KEY_SIZE_256, 8)]
         public void DEALKeyScheduler_ShouldGenerateCorrectNumberOfKeys(DEALKeyScheduler.KeyType keyType, int expectedRounds)
         {

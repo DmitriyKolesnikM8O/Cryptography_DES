@@ -31,7 +31,7 @@ namespace CryptoLib.Algorithms.DEAL
             _rounds = keyType switch
             {
                 KeyType.KEY_SIZE_128 => 6,
-                KeyType.KEY_SIZE_192 => 6,
+                KeyType.KEY_SIZE_192 => 8,
                 KeyType.KEY_SIZE_256 => 8,
                 _ => throw new ArgumentException("Invalid key type")
             };
